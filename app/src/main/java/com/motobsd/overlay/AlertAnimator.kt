@@ -2,67 +2,97 @@ package com.motobsd.overlay
 
 import android.animation.ValueAnimator
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
 import com.motobsd.model.AlertLevel
 
 /**
- * 告警动画：四级响应式脉冲。
+ * 告警动画 — 占空比脉冲。
  *
- * | 级别     | 颜色   | 周期 | 效果        |
- * |----------|--------|------|-------------|
- * | Safe     | 灰     | —    | 常亮        |
- * | Warning  | 黄     | 800ms| 慢速脉冲    |
- * | Alert    | 黄     | 400ms| 快速脉冲    |
- * | Critical | 红     | 250ms| 红色急闪    |
+ * | 级别     | 颜色 | 周期 | 亮/灭    | 骑车感知      |
+ * |----------|------|------|----------|---------------|
+ * | Safe     | 灰   | —    | 恒亮     | 安全          |
+ * | Warning  | 黄   | 1000 | 700/300  | 慢悠悠有车    |
+ * | Alert    | 黄   | 500  | 300/200  | 有车在靠近    |
+ * | Critical | 红   | 200  | 100/100  | 马上撞 ！！   |
+ *
+ * 安全兜底：1.5s 无新告警自动回 Safe。
  */
 class AlertAnimator(
     private val onColorUpdate: (Int) -> Unit,
 ) {
     private var animator: ValueAnimator? = null
     private var currentLevel: AlertLevel = AlertLevel.Safe
+    private var safetyTimer: java.util.Timer? = null
 
     fun setLevel(level: AlertLevel) {
-        android.util.Log.d("MotoBSD", "Animator setLevel: ${level.label}, current=${currentLevel.label}")
         if (level == currentLevel) return
         currentLevel = level
-        applyLevel()
+
+        if (level == AlertLevel.Safe) {
+            animator?.cancel()
+            animator = null
+            onColorUpdate(COLOR_SAFE)
+            cancelSafetyTimer()
+            return
+        }
+
+        scheduleSafetyReset()
+        animator?.cancel()
+        startPulse(level)
     }
 
     fun release() {
         animator?.cancel()
         animator = null
+        cancelSafetyTimer()
     }
 
-    private fun applyLevel() {
-        animator?.cancel()
+    // ── pulse ─────────────────────────────────────────────
 
-        when (currentLevel) {
-            AlertLevel.Safe -> {
-                onColorUpdate(COLOR_SAFE)
-            }
-            AlertLevel.Warning -> {
-                startPulse(COLOR_WARNING, periodMs = 800)
-            }
-            AlertLevel.Alert -> {
-                startPulse(COLOR_WARNING, periodMs = 400)
-            }
-            AlertLevel.Critical -> {
-                startPulse(COLOR_CRITICAL, periodMs = 250)
-            }
+    private fun startPulse(level: AlertLevel) {
+        val (color, periodMs, onFraction) = when (level) {
+            AlertLevel.Warning  -> Triple(COLOR_WARNING,  1000, 0.70f)
+            AlertLevel.Alert    -> Triple(COLOR_WARNING,   500, 0.60f)
+            AlertLevel.Critical -> Triple(COLOR_CRITICAL,  200, 0.50f)
+            else -> return
         }
-    }
 
-    private fun startPulse(targetColor: Int, periodMs: Int) {
-        val dimmed = dimColor(targetColor, 0.3f)
+        val dimmed = dimColor(color, 0.15f)
+        val onMs = (periodMs * onFraction).toLong()
+        val offMs = periodMs - onMs
+
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = periodMs / 2L
-            repeatMode = ValueAnimator.REVERSE
+            duration = onMs
+            repeatMode = ValueAnimator.RESTART
             repeatCount = ValueAnimator.INFINITE
             addUpdateListener { a ->
-                onColorUpdate(blend(dimmed, targetColor, a.animatedValue as Float))
+                val bright = blend(dimmed, color, a.animatedValue as Float)
+                onColorUpdate(bright)
             }
             start()
         }
     }
+
+    // ── safety ────────────────────────────────────────────
+
+    private fun scheduleSafetyReset() {
+        cancelSafetyTimer()
+        safetyTimer = java.util.Timer("alert-safety", true).apply {
+            schedule(object : java.util.TimerTask() {
+                override fun run() {
+                    Handler(Looper.getMainLooper()).post { setLevel(AlertLevel.Safe) }
+                }
+            }, 1500)
+        }
+    }
+
+    private fun cancelSafetyTimer() {
+        safetyTimer?.cancel()
+        safetyTimer = null
+    }
+
+    // ── color utils ───────────────────────────────────────
 
     companion object {
         val COLOR_SAFE     = Color.parseColor("#9E9E9E")

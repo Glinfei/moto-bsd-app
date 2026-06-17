@@ -1,7 +1,9 @@
 package com.motobsd.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
@@ -23,10 +25,20 @@ private val DarkColors = darkColorScheme(
     onSurface = Color.White,
 )
 
+private val LightColors = lightColorScheme(
+    primary = MotoBsdBlue,
+    secondary = Color(0xFF018786),
+    background = Color(0xFFF8F9FA),
+    surface = Color.White,
+    onPrimary = Color.White,
+    onBackground = Color(0xFF1C1B1F),
+    onSurface = Color(0xFF1C1B1F),
+)
+
 @Composable
 fun MotoBSDTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = DarkColors,
+        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
         content = content,
     )
 }

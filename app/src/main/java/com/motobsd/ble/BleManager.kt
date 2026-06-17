@@ -250,12 +250,10 @@ class MotoBsdBleManager(context: Context) : BleManager(context) {
     // ── 通知数据处理 ──────────────────────────────────────
 
     private fun onAlertStatusData(device: BluetoothDevice, data: Data) {
-        val raw = if (data.value != null && data.value!!.isNotEmpty()) data.value!![0].toInt() and 0xFF else -1
         val (left, right) = Protocol.parseAlertStatus(data.value)
-        android.util.Log.d("MotoBSD", "BLE alert: raw=0x${raw.toString(16)}, left=${left.label}(${left.value}), right=${right.label}(${right.value})")
         _alertLeft.value = left
         _alertRight.value = right
-        BleStateHolder.updateAlert(left, right)
+        // 统一由 BleService 回调处理 swap + 分发到 BleStateHolder 和 Overlay
         onAlertChanged?.invoke(left.ordinal, right.ordinal)
     }
 

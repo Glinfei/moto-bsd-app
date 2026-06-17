@@ -21,9 +21,12 @@ import androidx.lifecycle.lifecycleScope
 import com.motobsd.MainActivity
 import com.motobsd.ble.MotoBsdBleManager
 import com.motobsd.model.AlertLevel
+import com.motobsd.model.BleStateHolder
 import com.motobsd.model.ConnectionState
+import com.motobsd.overlay.OverlayWindowHolder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -55,7 +58,8 @@ class BleService : LifecycleService() {
             var r = AlertLevel.entries.getOrElse(rightVal) { AlertLevel.Safe }
             if (Companion.swapLeftRight) { val t = l; l = r; r = t }
             currentLeft = l; currentRight = r
-            OverlayService.updateAlert(this, l, r)
+            // BleStateHolder 是唯一数据源，Overlay 从它订阅，不再单独设置
+            BleStateHolder.updateAlert(l, r)
             handleAlertNotify(l, r)
             refreshNotification()
         }
@@ -75,10 +79,16 @@ class BleService : LifecycleService() {
             }
         }
 
+        // Overlay 从 BleStateHolder 订阅告警（与 Dashboard 同源，保证一致）
+        lifecycleScope.launch {
+            combine(BleStateHolder.alertLeft, BleStateHolder.alertRight) { l, r -> Pair(l, r) }
+                .collect { (l, r) -> OverlayWindowHolder.updateAlert(l, r) }
+        }
+
         // 监听设备状态
         lifecycleScope.launch {
             bleManager.deviceStatus.collect { status ->
-                OverlayService.updateBattery(this@BleService, status.batteryPercent)
+                OverlayWindowHolder.updateBattery(status.batteryPercent)
             }
         }
     }
@@ -95,13 +105,18 @@ class BleService : LifecycleService() {
                 }
             }
             ACTION_SCAN -> {
+                manuallyDisconnected = false
                 val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
                 val adapter = btManager.adapter
                 bleManager.startScan(adapter)
             }
             ACTION_DISCONNECT -> {
-                bleManager.disconnect().enqueue()
                 wasConnected = false
+                manuallyDisconnected = true
+                bleManager.disconnect().enqueue()
+                // 立即清零告警状态
+                BleStateHolder.updateAlert(AlertLevel.Safe, AlertLevel.Safe)
+                OverlayWindowHolder.updateAlert(AlertLevel.Safe, AlertLevel.Safe)
             }
             ACTION_STOP -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -166,10 +181,11 @@ class BleService : LifecycleService() {
     // ── reconnect ─────────────────────────────────────────
 
     private var reconnectAttempt = 0
-    private var wasConnected = false // 曾成功连接过才启动重连
+    private var wasConnected = false
+    private var manuallyDisconnected = false // 用户主动断开后禁止重连
 
     private fun tryReconnect() {
-        if (!wasConnected) return // 首次连接失败不重连，等用户手动触发
+        if (!wasConnected || manuallyDisconnected) return
         reconnectAttempt++
         val delayMs = minOf(1000L * (1 shl minOf(reconnectAttempt - 1, 4)), 30_000L)
         lifecycleScope.launch {

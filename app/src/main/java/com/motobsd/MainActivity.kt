@@ -195,12 +195,14 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "请先连接设备", Toast.LENGTH_SHORT).show()
             return
         }
-        // Trigger DFU on device side first
-        BleService.bleManager?.triggerDfu()
-        // Then start Nordic DFU
+        // 低速高可靠性 DFU：小 MTU + 每包确认，防止 Flash 写失败
         val starter = DfuServiceInitiator(address)
             .setZip(zipUri)
             .setUnsafeExperimentalButtonlessServiceInSecureDfuEnabled(true)
+            .setPacketsReceiptNotificationsEnabled(true)
+            .setPacketsReceiptNotificationsValue(1)   // 每包都确认，最可靠
+            .setMtu(23)                                // 最小 MTU，减少丢包
+            .setNumberOfRetries(5)                     // 失败重试 5 次
         starter.start(this, DfuService::class.java)
     }
 
@@ -253,7 +255,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Reload overlay config
+        val swap = prefs.getBoolean("overlay_swap", false)
+        // 同步 swap 标志到两个消费端
+        BleService.swapLeftRight = swap
+        BleStateHolder.swapLeftRight = swap
         _overlayConfig.value = OverlayConfig(
             style = OverlayStyle.entries.getOrElse(
                 prefs.getInt("overlay_style", OverlayStyle.Dot.ordinal)
@@ -262,7 +267,7 @@ class MainActivity : ComponentActivity() {
                 prefs.getInt("overlay_size", OverlaySize.Large.ordinal)
             ) { OverlaySize.Large },
             alpha = prefs.getInt("overlay_alpha", 60),
-            swapLeftRight = prefs.getBoolean("overlay_swap", false),
+            swapLeftRight = swap,
         )
     }
 }
