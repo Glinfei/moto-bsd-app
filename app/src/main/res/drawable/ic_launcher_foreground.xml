@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Motorcycle + shield icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 C54,28 42,40 36,48 L30,48 C28,48 26,50 26,52 L26,56 C26,58 28,60 30,60 L36,60 C38,60 39,62 38,64 L34,72 L40,72 L44,64 C42,68 44,74 48,76 L48,82 L60,82 L60,76 C64,74 66,68 64,64 L68,72 L74,72 L70,64 C69,62 70,60 72,60 L78,60 C80,60 82,58 82,56 L82,52 C82,50 80,48 78,48 L72,48 C66,40 54,28 54,28 Z M44,44 L64,44 C66,44 68,46 68,48 C68,50 66,52 64,52 L44,52 C42,52 40,50 40,48 C40,46 42,44 44,44 Z M50,56 L58,56 C60,56 62,58 62,60 L62,66 C62,68 60,70 58,70 L50,70 C48,70 46,68 46,66 L46,60 C46,58 48,56 50,56 Z"/>
+</vector>
