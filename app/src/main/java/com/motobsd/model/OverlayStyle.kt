@@ -13,9 +13,9 @@ enum class OverlayStyle(val label: String) {
  * 悬浮窗图标大小。
  */
 enum class OverlaySize(val label: String, val dp: Float) {
-    Small("小", 12f),
-    Medium("中", 20f),
-    Large("大", 28f),
+    Small("小", 28f),
+    Medium("中", 40f),
+    Large("大", 56f),
 }
 
 /**
@@ -23,9 +23,11 @@ enum class OverlaySize(val label: String, val dp: Float) {
  */
 data class OverlayConfig(
     val style: OverlayStyle = OverlayStyle.Dot,
-    val size: OverlaySize = OverlaySize.Large,
+    val size: OverlaySize = OverlaySize.Medium,
     /** 0-100，默认 60% */
     val alpha: Int = 60,
+    /** 左右反转（适配雷达安装方向） */
+    val swapLeftRight: Boolean = false,
     /** left dot 自定义位置 (fraction of screen), null=用默认 */
     val leftXFraction: Float? = null,
     val leftYFraction: Float? = null,

@@ -70,6 +70,8 @@ class MotoBsdBleManager(context: Context) : BleManager(context) {
     private val _alertRight = MutableStateFlow(com.motobsd.model.AlertLevel.Safe)
     val alertRight: StateFlow<com.motobsd.model.AlertLevel> = _alertRight.asStateFlow()
 
+    /** 上次成功连接的 MAC，用于断线重连优先直连。 */
+    var lastConnectedMac: String? = null
     private var isScanning = false
     private var scanCallback: ScanCallback? = null
 
@@ -134,11 +136,24 @@ class MotoBsdBleManager(context: Context) : BleManager(context) {
     }
 
     fun connectDevice(device: BluetoothDevice) {
+        lastConnectedMac = device.address
         setConnectionState(ConnectionState.Connecting)
         connect(device)
             .retry(3, 100)
             .useAutoConnect(false)
             .enqueue()
+    }
+
+    /** 直连已知 MAC（优先于扫描，功耗更低）。 */
+    fun connectByMac(adapter: BluetoothAdapter): Boolean {
+        val mac = lastConnectedMac ?: return false
+        try {
+            val device = adapter.getRemoteDevice(mac)
+            connectDevice(device)
+            return true
+        } catch (_: Exception) {
+            return false
+        }
     }
 
     fun setRadarPower(on: Boolean) {
@@ -235,7 +250,9 @@ class MotoBsdBleManager(context: Context) : BleManager(context) {
     // ── 通知数据处理 ──────────────────────────────────────
 
     private fun onAlertStatusData(device: BluetoothDevice, data: Data) {
+        val raw = if (data.value != null && data.value!!.isNotEmpty()) data.value!![0].toInt() and 0xFF else -1
         val (left, right) = Protocol.parseAlertStatus(data.value)
+        android.util.Log.d("MotoBSD", "BLE alert: raw=0x${raw.toString(16)}, left=${left.label}(${left.value}), right=${right.label}(${right.value})")
         _alertLeft.value = left
         _alertRight.value = right
         BleStateHolder.updateAlert(left, right)
@@ -245,6 +262,7 @@ class MotoBsdBleManager(context: Context) : BleManager(context) {
     private fun onTargetDetailsData(device: BluetoothDevice, data: Data) {
         val list = Protocol.parseTargetDetails(data.value)
         _targets.value = list
+        BleStateHolder.updateTargets(list)
     }
 
     private fun onDeviceStatusData(device: BluetoothDevice, data: Data) {

@@ -51,10 +51,12 @@ class BleService : LifecycleService() {
         wakeLock.setReferenceCounted(false)
 
         bleManager.onAlertChanged = { leftVal, rightVal ->
-            currentLeft = AlertLevel.entries.getOrElse(leftVal) { AlertLevel.Safe }
-            currentRight = AlertLevel.entries.getOrElse(rightVal) { AlertLevel.Safe }
-            OverlayService.updateAlert(this, currentLeft, currentRight)
-            handleAlertNotify(currentLeft, currentRight)
+            var l = AlertLevel.entries.getOrElse(leftVal) { AlertLevel.Safe }
+            var r = AlertLevel.entries.getOrElse(rightVal) { AlertLevel.Safe }
+            if (Companion.swapLeftRight) { val t = l; l = r; r = t }
+            currentLeft = l; currentRight = r
+            OverlayService.updateAlert(this, l, r)
+            handleAlertNotify(l, r)
             refreshNotification()
         }
 
@@ -63,7 +65,10 @@ class BleService : LifecycleService() {
             bleManager.connectionState.collect { state ->
                 refreshNotification()
                 when (state) {
-                    ConnectionState.Ready -> reconnectAttempt = 0
+                    ConnectionState.Ready -> {
+                        wasConnected = true
+                        reconnectAttempt = 0
+                    }
                     ConnectionState.Idle -> tryReconnect()
                     else -> {}
                 }
@@ -94,6 +99,10 @@ class BleService : LifecycleService() {
                 val adapter = btManager.adapter
                 bleManager.startScan(adapter)
             }
+            ACTION_DISCONNECT -> {
+                bleManager.disconnect().enqueue()
+                wasConnected = false
+            }
             ACTION_STOP -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -112,8 +121,14 @@ class BleService : LifecycleService() {
     // ── notification ──────────────────────────────────────
 
     private var currentNotificationState: ConnectionState = ConnectionState.Idle
+    private var lastNotifyRefreshMs: Long = 0
 
     private fun refreshNotification() {
+        // 节流：最多每秒刷新一次通知，防止系统限速丢弃
+        val now = System.currentTimeMillis()
+        if (now - lastNotifyRefreshMs < 1000 && currentNotificationState == ConnectionState.Ready) return
+        lastNotifyRefreshMs = now
+
         val state = bleManager.connectionState.value
         currentNotificationState = state
 
@@ -151,20 +166,19 @@ class BleService : LifecycleService() {
     // ── reconnect ─────────────────────────────────────────
 
     private var reconnectAttempt = 0
-
-    private fun handleDisconnect() {
-        reconnectAttempt = 0
-        tryReconnect()
-    }
+    private var wasConnected = false // 曾成功连接过才启动重连
 
     private fun tryReconnect() {
+        if (!wasConnected) return // 首次连接失败不重连，等用户手动触发
         reconnectAttempt++
         val delayMs = minOf(1000L * (1 shl minOf(reconnectAttempt - 1, 4)), 30_000L)
         lifecycleScope.launch {
             delay(delayMs)
             val btManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = btManager.adapter
-            bleManager.startScan(adapter)
+            if (!bleManager.connectByMac(adapter)) {
+                bleManager.startScan(adapter)
+            }
         }
     }
 
@@ -232,7 +246,11 @@ class BleService : LifecycleService() {
         var bleManager: MotoBsdBleManager? = null
             private set
 
+        /** 左右反转开关。 */
+        var swapLeftRight: Boolean = false
+
         const val ACTION_CONNECT = "com.motobsd.action.CONNECT"
+        const val ACTION_DISCONNECT = "com.motobsd.action.DISCONNECT"
         const val ACTION_SCAN = "com.motobsd.action.SCAN"
         const val ACTION_STOP = "com.motobsd.action.STOP"
         const val EXTRA_ADDRESS = "extra_address"
@@ -260,6 +278,11 @@ class BleService : LifecycleService() {
             } else {
                 context.startService(intent)
             }
+        }
+
+        fun disconnect(context: Context) {
+            val intent = Intent(context, BleService::class.java).apply { action = ACTION_DISCONNECT }
+            context.startService(intent)
         }
 
         fun stop(context: Context) {

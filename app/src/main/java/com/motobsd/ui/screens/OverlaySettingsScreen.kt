@@ -22,6 +22,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -113,6 +114,29 @@ fun OverlaySettingsScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = SafeGray,
         )
+
+        Spacer(Modifier.height(8.dp))
+
+        // ── Swap Left/Right ───────────────────────────────
+        Text("高级", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        HorizontalDivider()
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("左右反转", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = if (config.swapLeftRight) "已反转" else "正常",
+                style = MaterialTheme.typography.bodySmall,
+                color = SafeGray,
+            )
+            Switch(
+                checked = config.swapLeftRight,
+                onCheckedChange = { onConfigChange(config.copy(swapLeftRight = it)) },
+            )
+        }
 
         Spacer(Modifier.height(8.dp))
 

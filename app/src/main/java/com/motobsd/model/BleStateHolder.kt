@@ -22,10 +22,21 @@ object BleStateHolder {
     private val _disInfo = MutableStateFlow<Map<java.util.UUID, String>>(emptyMap())
     val disInfo: StateFlow<Map<java.util.UUID, String>> = _disInfo.asStateFlow()
 
+    private val _targets = MutableStateFlow<List<TargetObject>>(emptyList())
+    val targets: StateFlow<List<TargetObject>> = _targets.asStateFlow()
+
+    /** 左右反转开关（与 OverlayConfig.swapLeftRight 同步） */
+    var swapLeftRight: Boolean = false
+
     fun updateConnectionState(state: ConnectionState) { _connectionState.value = state }
     fun updateAlert(left: AlertLevel, right: AlertLevel) {
-        _alertLeft.value = left; _alertRight.value = right
+        if (swapLeftRight) {
+            _alertLeft.value = right; _alertRight.value = left
+        } else {
+            _alertLeft.value = left; _alertRight.value = right
+        }
     }
     fun updateDeviceStatus(status: DeviceStatus) { _deviceStatus.value = status }
     fun updateDisInfo(info: Map<java.util.UUID, String>) { _disInfo.value = info }
+    fun updateTargets(targets: List<TargetObject>) { _targets.value = targets }
 }

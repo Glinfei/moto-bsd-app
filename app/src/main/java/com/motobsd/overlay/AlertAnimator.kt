@@ -1,82 +1,79 @@
 package com.motobsd.overlay
 
 import android.animation.ValueAnimator
-import android.animation.ArgbEvaluator
 import android.graphics.Color
 import com.motobsd.model.AlertLevel
 
 /**
- * 告警动画：颜色渐变 + 闪烁脉冲。
+ * 告警动画：四级响应式脉冲。
+ *
+ * | 级别     | 颜色   | 周期 | 效果        |
+ * |----------|--------|------|-------------|
+ * | Safe     | 灰     | —    | 常亮        |
+ * | Warning  | 黄     | 800ms| 慢速脉冲    |
+ * | Alert    | 黄     | 400ms| 快速脉冲    |
+ * | Critical | 红     | 250ms| 红色急闪    |
  */
 class AlertAnimator(
     private val onColorUpdate: (Int) -> Unit,
 ) {
-    private var colorAnimator: ValueAnimator? = null
-    private var blinkAnimator: ValueAnimator? = null
+    private var animator: ValueAnimator? = null
     private var currentLevel: AlertLevel = AlertLevel.Safe
-    private var baseColor: Int = COLOR_SAFE
 
     fun setLevel(level: AlertLevel) {
+        android.util.Log.d("MotoBSD", "Animator setLevel: ${level.label}, current=${currentLevel.label}")
         if (level == currentLevel) return
-        val from = currentLevel
         currentLevel = level
-
-        val targetColor = colorForLevel(level)
-        when {
-            level == AlertLevel.Critical -> startBlink(targetColor)
-            else -> smoothTransition(fromColor = baseColor, toColor = targetColor)
-        }
-        baseColor = targetColor
+        applyLevel()
     }
 
     fun release() {
-        colorAnimator?.cancel()
-        blinkAnimator?.cancel()
+        animator?.cancel()
+        animator = null
     }
 
-    // ── internal ──────────────────────────────────────────
+    private fun applyLevel() {
+        animator?.cancel()
 
-    private fun smoothTransition(fromColor: Int, toColor: Int) {
-        blinkAnimator?.cancel()
-        colorAnimator?.cancel()
-        colorAnimator = ValueAnimator.ofObject(ArgbEvaluator(), fromColor, toColor).apply {
-            duration = 300
-            addUpdateListener { onColorUpdate(it.animatedValue as Int) }
-            start()
+        when (currentLevel) {
+            AlertLevel.Safe -> {
+                onColorUpdate(COLOR_SAFE)
+            }
+            AlertLevel.Warning -> {
+                startPulse(COLOR_WARNING, periodMs = 800)
+            }
+            AlertLevel.Alert -> {
+                startPulse(COLOR_WARNING, periodMs = 400)
+            }
+            AlertLevel.Critical -> {
+                startPulse(COLOR_CRITICAL, periodMs = 250)
+            }
         }
     }
 
-    private fun startBlink(targetColor: Int) {
-        colorAnimator?.cancel()
-        blinkAnimator?.cancel()
-        val grayed = Color.argb(
-            Color.alpha(targetColor),
-            (Color.red(targetColor) * 0.4f).toInt(),
-            (Color.green(targetColor) * 0.4f).toInt(),
-            (Color.blue(targetColor) * 0.4f).toInt(),
-        )
-        blinkAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 600
+    private fun startPulse(targetColor: Int, periodMs: Int) {
+        val dimmed = dimColor(targetColor, 0.3f)
+        animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = periodMs / 2L
             repeatMode = ValueAnimator.REVERSE
             repeatCount = ValueAnimator.INFINITE
-            addUpdateListener { anim ->
-                val fraction = anim.animatedValue as Float
-                onColorUpdate(blend(grayed, targetColor, fraction))
+            addUpdateListener { a ->
+                onColorUpdate(blend(dimmed, targetColor, a.animatedValue as Float))
             }
             start()
         }
     }
 
     companion object {
-        val COLOR_SAFE    = Color.parseColor("#9E9E9E")
-        val COLOR_WARNING = Color.parseColor("#FFC107")
+        val COLOR_SAFE     = Color.parseColor("#9E9E9E")
+        val COLOR_WARNING  = Color.parseColor("#FFC107")
         val COLOR_CRITICAL = Color.parseColor("#F44336")
 
-        fun colorForLevel(level: AlertLevel): Int = when (level) {
-            AlertLevel.Safe     -> COLOR_SAFE
-            AlertLevel.Warning  -> COLOR_WARNING
-            AlertLevel.Critical -> COLOR_CRITICAL
-        }
+        private fun dimColor(c: Int, factor: Float): Int =
+            Color.argb(Color.alpha(c),
+                (Color.red(c) * factor).toInt(),
+                (Color.green(c) * factor).toInt(),
+                (Color.blue(c) * factor).toInt())
 
         private fun blend(c1: Int, c2: Int, ratio: Float): Int {
             val r = (Color.red(c1)   + (Color.red(c2)   - Color.red(c1))   * ratio).toInt()

@@ -26,10 +26,17 @@ class BsdIndicatorView(
         Right("右"),
     }
 
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = AlertAnimator.COLOR_SAFE
+    }
+    private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2f
+        color = AlertAnimator.COLOR_SAFE
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -97,12 +104,15 @@ class BsdIndicatorView(
     }
 
     private fun drawDotStyle(canvas: Canvas, cx: Float, cy: Float, r: Float) {
+        // 光晕
         paint.alpha = (currentAlpha * 0.25f * 255).toInt()
         canvas.drawCircle(cx, cy, r * 1.5f, paint)
+        // 主体
         paint.alpha = (currentAlpha * 255).toInt()
         canvas.drawCircle(cx, cy, r * 0.85f, paint)
-        paint.color = Color.argb((currentAlpha * 50).toInt(), 255, 255, 255)
-        canvas.drawCircle(cx - r * 0.15f, cy - r * 0.2f, r * 0.3f, paint)
+        // 高光（独立 Paint，不覆盖主体颜色）
+        highlightPaint.color = Color.argb((currentAlpha * 50).toInt(), 255, 255, 255)
+        canvas.drawCircle(cx - r * 0.15f, cy - r * 0.2f, r * 0.3f, highlightPaint)
     }
 
     private fun drawBarStyle(canvas: Canvas, cx: Float, cy: Float, w: Float, h: Float) {

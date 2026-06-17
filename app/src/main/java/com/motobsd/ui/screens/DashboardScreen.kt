@@ -26,6 +26,10 @@ import androidx.compose.ui.unit.dp
 import com.motobsd.model.AlertLevel
 import com.motobsd.model.ConnectionState
 import com.motobsd.model.DeviceStatus
+import com.motobsd.model.TargetObject
+import com.motobsd.ui.theme.CriticalRed
+import com.motobsd.ui.theme.SafeGray
+import com.motobsd.ui.theme.WarningYellow
 import com.motobsd.ui.components.BatteryGauge
 import com.motobsd.ui.components.BlindSpotCard
 import com.motobsd.ui.theme.MotoBsdBlue
@@ -36,8 +40,10 @@ fun DashboardScreen(
     alertLeft: AlertLevel,
     alertRight: AlertLevel,
     deviceStatus: DeviceStatus,
+    targets: List<TargetObject>,
     onHideToBackground: () -> Unit,
     onScan: () -> Unit,
+    onDisconnect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -73,6 +79,31 @@ fun DashboardScreen(
             BlindSpotCard("右", alertRight, modifier = Modifier.weight(1f))
         }
 
+        // ── Nearest Target ────────────────────────────────
+        if (targets.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("最近目标", style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.Gray)
+                    targets.sortedBy { it.rangeDm }.take(2).forEach { t ->
+                        val sideLabel = if (t.side == 0) "左" else "右"
+                        val approach = if (t.velocity > 0) "靠近" else if (t.velocity < 0) "远离" else ""
+                        Text(
+                            text = "${sideLabel}侧 · ${t.rangeMeters}m · ${t.angle}° · ${t.velocity}m/s $approach",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = when (t.threatLevel) {
+                                2 -> CriticalRed; 1 -> WarningYellow; else -> SafeGray
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
         // ── Device Status ─────────────────────────────────
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -85,14 +116,38 @@ fun DashboardScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // ── Scan / Connect ────────────────────────────────
-        if (connectionState == ConnectionState.Idle || connectionState == ConnectionState.Failed) {
-            Button(
-                onClick = onScan,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = MotoBsdBlue),
-            ) {
-                Text(if (connectionState == ConnectionState.Failed) "重试扫描" else "扫描设备")
+        // ── Scan / Disconnect ─────────────────────────────
+        when (connectionState) {
+            ConnectionState.Idle, ConnectionState.Failed -> {
+                Button(
+                    onClick = onScan,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MotoBsdBlue),
+                ) {
+                    Text(if (connectionState == ConnectionState.Failed) "重试扫描" else "扫描设备")
+                }
+            }
+            ConnectionState.Ready -> {
+                Button(
+                    onClick = onDisconnect,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = androidx.compose.ui.graphics.Color(0xFFF44336)
+                    ),
+                ) {
+                    Text("断开连接")
+                }
+            }
+            else -> {
+                // Scanning / Connecting / Subscribing / Reconnecting
+                Button(
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = false,
+                    colors = ButtonDefaults.buttonColors(containerColor = MotoBsdBlue),
+                ) {
+                    Text(connectionState.label)
+                }
             }
         }
 

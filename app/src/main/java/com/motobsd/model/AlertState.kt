@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class AlertLevel(val value: Int, val label: String) {
     Safe(0, "安全"),
     Warning(1, "Warning"),
-    Critical(2, "Critical");
+    Alert(2, "Alert"),
+    Critical(3, "Critical");
 
     companion object {
         fun fromValue(v: Int): AlertLevel = entries.firstOrNull { it.value == v } ?: Safe

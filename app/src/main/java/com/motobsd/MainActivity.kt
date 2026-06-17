@@ -101,6 +101,7 @@ class MainActivity : ComponentActivity() {
         val alertRight by BleStateHolder.alertRight.collectAsState()
         val deviceStatus by BleStateHolder.deviceStatus.collectAsState()
         val disInfoMap by BleStateHolder.disInfo.collectAsState()
+        val targets by BleStateHolder.targets.collectAsState()
         val overlayConfig by _overlayConfig.collectAsState()
 
         val disInfo = DisInfo(
@@ -143,8 +144,12 @@ class MainActivity : ComponentActivity() {
                     alertLeft = alertLeft,
                     alertRight = alertRight,
                     deviceStatus = deviceStatus,
+                    targets = targets,
                     onScan = {
                         BleService.scan(this@MainActivity)
+                    },
+                    onDisconnect = {
+                        BleService.disconnect(this@MainActivity)
                     },
                     onHideToBackground = {
                         OverlayService.start(this@MainActivity)
@@ -239,7 +244,11 @@ class MainActivity : ComponentActivity() {
             putInt("overlay_style", cfg.style.ordinal)
             putInt("overlay_size", cfg.size.ordinal)
             putInt("overlay_alpha", cfg.alpha)
+            putBoolean("overlay_swap", cfg.swapLeftRight)
         }.apply()
+        // 同步到全局
+        BleService.swapLeftRight = cfg.swapLeftRight
+        BleStateHolder.swapLeftRight = cfg.swapLeftRight
     }
 
     override fun onResume() {
@@ -253,6 +262,7 @@ class MainActivity : ComponentActivity() {
                 prefs.getInt("overlay_size", OverlaySize.Large.ordinal)
             ) { OverlaySize.Large },
             alpha = prefs.getInt("overlay_alpha", 60),
+            swapLeftRight = prefs.getBoolean("overlay_swap", false),
         )
     }
 }

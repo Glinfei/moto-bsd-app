@@ -185,6 +185,7 @@ class OverlayWindow(private val context: Context) {
         val levelColor = when (sideLevel) {
             AlertLevel.Safe -> Color.parseColor("#9E9E9E")
             AlertLevel.Warning -> Color.parseColor("#FFC107")
+            AlertLevel.Alert -> Color.parseColor("#FF9800")
             AlertLevel.Critical -> Color.parseColor("#F44336")
         }
 

@@ -5,8 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.motobsd.model.AlertLevel
 import com.motobsd.ui.theme.CriticalBg
@@ -47,6 +46,7 @@ fun BlindSpotCard(
         when (level) {
             AlertLevel.Safe -> SafeBg.copy(alpha = 0.15f)
             AlertLevel.Warning -> WarningBg.copy(alpha = 0.25f)
+            AlertLevel.Alert -> WarningBg.copy(alpha = 0.4f)
             AlertLevel.Critical -> CriticalBg.copy(alpha = 0.25f)
         },
         label = "cardBg",
@@ -55,6 +55,7 @@ fun BlindSpotCard(
         when (level) {
             AlertLevel.Safe -> SafeGray
             AlertLevel.Warning -> WarningYellow
+            AlertLevel.Alert -> WarningYellow
             AlertLevel.Critical -> CriticalRed
         },
         label = "dotColor",
@@ -66,11 +67,17 @@ fun BlindSpotCard(
         colors = CardDefaults.cardColors(containerColor = bgColor),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(text = sideLabel, style = MaterialTheme.typography.labelMedium)
+            Text(
+                text = sideLabel,
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = TextAlign.Center,
+            )
 
             Box(
                 modifier = Modifier
@@ -79,7 +86,7 @@ fun BlindSpotCard(
                     .background(dotColor),
                 contentAlignment = Alignment.Center,
             ) {
-                if (level == AlertLevel.Critical) {
+                if (level == AlertLevel.Alert || level == AlertLevel.Critical) {
                     Icon(
                         imageVector = Icons.Default.Bolt,
                         contentDescription = "告警",
@@ -93,6 +100,7 @@ fun BlindSpotCard(
                 text = level.label,
                 style = MaterialTheme.typography.titleMedium,
                 color = dotColor,
+                textAlign = TextAlign.Center,
             )
         }
     }
