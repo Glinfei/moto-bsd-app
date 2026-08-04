@@ -29,6 +29,7 @@ object Protocol {
     val CHARACTERISTIC_RADAR_POWER    = bsdChar("0005") // read + write
     val CHARACTERISTIC_DFU_TRIGGER    = bsdChar("0007") // write
     val CHARACTERISTIC_SYSTEM_RESET   = bsdChar("0008") // write
+    val CHARACTERISTIC_DEVICE_NAME   = bsdChar("0009") // read + write (UTF-8, max 20 bytes)
 
     // ── UUID: Standard Services ───────────────────────────
     // DIS (0x180A)
@@ -51,7 +52,7 @@ object Protocol {
     /**
      * 解析 alert_status（1 字节）。
      * hi_nibble = left alert level, lo_nibble = right alert level.
-     * 0=Safe, 1=Warning, 2=Critical.
+     * 0=Safe, 1=Warning, 2=Alert, 3=Critical.
      */
     fun parseAlertStatus(data: ByteArray?): Pair<AlertLevel, AlertLevel> {
         if (data == null || data.isEmpty()) return Pair(AlertLevel.Safe, AlertLevel.Safe)

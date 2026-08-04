@@ -1,12 +1,15 @@
 package com.motobsd.overlay
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.Rect
+import android.graphics.PorterDuff
 import android.graphics.RectF
+import android.graphics.Shader
 import android.view.View
 import com.motobsd.model.AlertLevel
 import com.motobsd.model.OverlayConfig
@@ -14,11 +17,13 @@ import com.motobsd.model.OverlayStyle
 
 /**
  * 单个盲区指示器 View（left 或 right 侧各一个）。
- * 由 WindowManager 直接 add 到 Overlay 层。
+ *
+ * 光带模式：不经过 AlertAnimator，直接从 alert level 取色，Safe 时全透明。
+ * 圆点/竖条/箭头：通过 AlertAnimator 管理颜色动画。
  */
 class BsdIndicatorView(
     context: Context,
-    private val side: Side,
+    val side: Side,
 ) : View(context) {
 
     enum class Side(val label: String) {
@@ -28,7 +33,6 @@ class BsdIndicatorView(
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = AlertAnimator.COLOR_SAFE
     }
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -36,12 +40,13 @@ class BsdIndicatorView(
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2f
-        color = AlertAnimator.COLOR_SAFE
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textAlign = Paint.Align.CENTER
     }
+
+    // ── 图标模式：AlertAnimator ──────────────────────────
 
     private val animator = AlertAnimator { color ->
         paint.color = color
@@ -49,27 +54,75 @@ class BsdIndicatorView(
         invalidate()
     }
 
+    // ── 光带模式：独立颜色 + 脉冲 alpha ──────────────────
+
+    private var lightBarLevel: AlertLevel = AlertLevel.Safe
+    private var lightBarPulseAlpha: Float = 0f
+    private var pulseAnimator: ValueAnimator? = null
+
+    // ── 通用状态 ─────────────────────────────────────────
+
     private var currentAlpha: Float = 0.6f
-    private var currentLevel: AlertLevel = AlertLevel.Safe
     private var showLabel: Boolean = false
-    private var currentStyle: OverlayStyle = OverlayStyle.Dot
+    private var currentStyle: OverlayStyle = OverlayStyle.LightBar
 
-    var onLongPress: (() -> Unit)? = null
-    var onDoubleTap: (() -> Unit)? = null
+    // ── Public API ──────────────────────────────────────
 
-    /** 外部调用：设置告警级别 */
     fun setAlertLevel(level: AlertLevel) {
-        currentLevel = level
-        animator.setLevel(level)
+        if (currentStyle == OverlayStyle.LightBar) {
+            setLightBarLevel(level)
+        } else {
+            animator.setLevel(level)
+        }
+    }
+
+    private fun setLightBarLevel(level: AlertLevel) {
+        if (level == lightBarLevel) return
+        lightBarLevel = level
+
+        pulseAnimator?.cancel()
+        pulseAnimator = null
+
+        when (level) {
+            AlertLevel.Safe -> {
+                lightBarPulseAlpha = 0f
+            }
+            AlertLevel.Warning, AlertLevel.Alert -> {
+                lightBarPulseAlpha = 1f  // 常亮
+            }
+            AlertLevel.Critical -> {
+                startLightBarPulse()
+            }
+        }
+        invalidate()
+    }
+
+    private fun startLightBarPulse() {
+        pulseAnimator = ValueAnimator.ofFloat(0.3f, 1f).apply {
+            duration = 200
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { a ->
+                lightBarPulseAlpha = a.animatedValue as Float
+                invalidate()
+            }
+            start()
+        }
     }
 
     fun applyConfig(config: OverlayConfig) {
         currentAlpha = config.alpha / 100f
         currentStyle = config.style
+        // 切样式时重置光带状态
+        if (config.style != OverlayStyle.LightBar) {
+            pulseAnimator?.cancel()
+            pulseAnimator = null
+            lightBarLevel = AlertLevel.Safe
+            lightBarPulseAlpha = 0f
+        }
         invalidate()
     }
 
-    /** 拖拽时显示标签，松手隐藏 */
     fun setLabelVisible(visible: Boolean) {
         if (showLabel != visible) {
             showLabel = visible
@@ -80,52 +133,87 @@ class BsdIndicatorView(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         animator.release()
+        pulseAnimator?.cancel()
     }
+
+    // ── Drawing ─────────────────────────────────────────
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val w = width.toFloat()
         val h = height.toFloat()
-        val cx = w / 2f
-        val cy = h / 2f
-        val r = minOf(w, h) / 2f
 
         when (currentStyle) {
-            OverlayStyle.Dot -> drawDotStyle(canvas, cx, cy, r)
-            OverlayStyle.Bar -> drawBarStyle(canvas, cx, cy, w, h)
-            OverlayStyle.Arrow -> drawArrowStyle(canvas, cx, cy, w, h)
+            OverlayStyle.LightBar -> drawLightBar(canvas, w, h)
+            OverlayStyle.Dot -> drawDotStyle(canvas, w, h)
+            OverlayStyle.Bar -> drawBarStyle(canvas, w, h)
+            OverlayStyle.Arrow -> drawArrowStyle(canvas, w, h)
+        }
+    }
+
+    // ── LightBar ────────────────────────────────────────
+
+    private fun drawLightBar(canvas: Canvas, w: Float, h: Float) {
+        if (lightBarLevel == AlertLevel.Safe) {
+            canvas.drawColor(0, PorterDuff.Mode.CLEAR)
+            return
         }
 
-        // 左右标签文字
-        val labelSize = if (showLabel) r * 0.7f else r * 0.55f
+        val baseColor = when (lightBarLevel) {
+            AlertLevel.Warning, AlertLevel.Alert -> AlertAnimator.COLOR_WARNING
+            AlertLevel.Critical -> AlertAnimator.COLOR_CRITICAL
+            else -> return
+        }
+
+        val alpha = ((currentAlpha * lightBarPulseAlpha) * 255).toInt().coerceIn(0, 255)
+        val solidColor = Color.argb(alpha, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))
+        val transColor = Color.argb(0, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))
+
+        val gradient = if (side == Side.Left) {
+            LinearGradient(0f, 0f, w, 0f, solidColor, transColor, Shader.TileMode.CLAMP)
+        } else {
+            LinearGradient(0f, 0f, w, 0f, transColor, solidColor, Shader.TileMode.CLAMP)
+        }
+
+        paint.shader = gradient
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(0f, 0f, w, h, paint)
+        paint.shader = null
+    }
+
+    // ── Dot / Bar / Arrow (unchanged) ───────────────────
+
+    private fun drawDotStyle(canvas: Canvas, w: Float, h: Float) {
+        val cx = w / 2f; val cy = h / 2f; val r = minOf(w, h) / 2f
+        paint.alpha = (currentAlpha * 0.25f * 255).toInt()
+        canvas.drawCircle(cx, cy, r * 1.5f, paint)
+        paint.alpha = (currentAlpha * 255).toInt()
+        canvas.drawCircle(cx, cy, r * 0.85f, paint)
+        highlightPaint.color = Color.argb((currentAlpha * 50).toInt(), 255, 255, 255)
+        canvas.drawCircle(cx - r * 0.15f, cy - r * 0.2f, r * 0.3f, highlightPaint)
+
+        val labelSize = r * 0.55f
         textPaint.textSize = labelSize
-        textPaint.alpha = if (showLabel) 255 else (currentAlpha * 200).toInt()
+        textPaint.alpha = (currentAlpha * 200).toInt()
         canvas.drawText(side.label, cx, cy + labelSize / 3f, textPaint)
     }
 
-    private fun drawDotStyle(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-        // 光晕
-        paint.alpha = (currentAlpha * 0.25f * 255).toInt()
-        canvas.drawCircle(cx, cy, r * 1.5f, paint)
-        // 主体
-        paint.alpha = (currentAlpha * 255).toInt()
-        canvas.drawCircle(cx, cy, r * 0.85f, paint)
-        // 高光（独立 Paint，不覆盖主体颜色）
-        highlightPaint.color = Color.argb((currentAlpha * 50).toInt(), 255, 255, 255)
-        canvas.drawCircle(cx - r * 0.15f, cy - r * 0.2f, r * 0.3f, highlightPaint)
-    }
-
-    private fun drawBarStyle(canvas: Canvas, cx: Float, cy: Float, w: Float, h: Float) {
-        val barW = w * 0.4f
-        val barH = h * 0.9f
+    private fun drawBarStyle(canvas: Canvas, w: Float, h: Float) {
+        val cx = w / 2f; val cy = h / 2f; val r = minOf(w, h) / 2f
+        val barW = w * 0.4f; val barH = h * 0.9f
         val rect = RectF(cx - barW / 2f, cy - barH / 2f, cx + barW / 2f, cy + barH / 2f)
         paint.alpha = (currentAlpha * 255).toInt()
         canvas.drawRoundRect(rect, barW / 2f, barW / 2f, paint)
+
+        val labelSize = r * 0.55f
+        textPaint.textSize = labelSize
+        textPaint.alpha = (currentAlpha * 200).toInt()
+        canvas.drawText(side.label, cx, cy + labelSize / 3f, textPaint)
     }
 
-    private fun drawArrowStyle(canvas: Canvas, cx: Float, cy: Float, w: Float, h: Float) {
-        val aw = w * 0.7f
-        val ah = h * 0.5f
+    private fun drawArrowStyle(canvas: Canvas, w: Float, h: Float) {
+        val cx = w / 2f; val cy = h / 2f; val r = minOf(w, h) / 2f
+        val aw = w * 0.7f; val ah = h * 0.5f
         val path = Path()
         if (side == Side.Left) {
             path.moveTo(cx - aw / 2f, cy)
@@ -140,5 +228,10 @@ class BsdIndicatorView(
         paint.alpha = (currentAlpha * 255).toInt()
         paint.style = Paint.Style.FILL
         canvas.drawPath(path, paint)
+
+        val labelSize = r * 0.55f
+        textPaint.textSize = labelSize
+        textPaint.alpha = (currentAlpha * 200).toInt()
+        canvas.drawText(side.label, cx, cy + labelSize / 3f, textPaint)
     }
 }

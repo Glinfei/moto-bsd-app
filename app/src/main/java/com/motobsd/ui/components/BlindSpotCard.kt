@@ -41,6 +41,8 @@ fun BlindSpotCard(
     sideLabel: String,
     level: AlertLevel,
     modifier: Modifier = Modifier,
+    nearestDistMeters: Float? = null,
+    nearestVel: Int? = null,
 ) {
     val bgColor by animateColorAsState(
         when (level) {
@@ -102,6 +104,19 @@ fun BlindSpotCard(
                 color = dotColor,
                 textAlign = TextAlign.Center,
             )
+
+            if (nearestDistMeters != null && level != AlertLevel.Safe) {
+                val distText = "%.1fm".format(nearestDistMeters)
+                val velText = nearestVel?.let { v ->
+                    when { v > 0 -> "  →${v}m/s"; v < 0 -> "  ←${-v}m/s"; else -> "" }
+                } ?: ""
+                Text(
+                    text = "$distText$velText",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = dotColor.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }

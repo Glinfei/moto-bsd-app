@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.motobsd.model.OverlayStyle
@@ -53,6 +54,18 @@ fun StyleSelector(
             ) {
                 // 预览
                 when (style) {
+                    OverlayStyle.LightBar -> Box(
+                        modifier = Modifier
+                            .size(width = 16.dp, height = 24.dp)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        (if (selected) MotoBsdBlue else Color.Gray),
+                                        Color.Transparent,
+                                    )
+                                )
+                            )
+                    )
                     OverlayStyle.Dot -> Box(
                         modifier = Modifier
                             .size(24.dp)

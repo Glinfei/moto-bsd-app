@@ -1,4 +1,4 @@
-package com.motobsd.ui.screens
+package com.motobsd.ui.device
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,7 +13,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -23,6 +22,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,27 +35,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.motobsd.ui.theme.CriticalRed
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.motobsd.ui.theme.MotoBsdBlue
-
-data class DisInfo(
-    val manufacturer: String = "--",
-    val model: String = "--",
-    val serial: String = "--",
-    val hardwareRev: String = "--",
-    val firmwareRev: String = "--",
-)
 
 @Composable
 fun DeviceScreen(
-    disInfo: DisInfo,
-    radarOn: Boolean,
-    onRadarToggle: (Boolean) -> Unit,
-    onSystemReset: () -> Unit,
     onSelectFirmware: () -> Unit,
     modifier: Modifier = Modifier,
+    viewModel: DeviceViewModel = hiltViewModel(),
 ) {
+    val deviceStatus by viewModel.deviceStatus.collectAsStateWithLifecycle()
+    val disInfo by viewModel.disInfo.collectAsStateWithLifecycle()
+    val deviceName by viewModel.deviceName.collectAsStateWithLifecycle()
+    val nameMessage by viewModel.nameMessage.collectAsStateWithLifecycle()
     var showResetDialog by remember { mutableStateOf(false) }
+    var editName by remember { mutableStateOf("") }
+    var isEditingName by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -72,12 +68,94 @@ fun DeviceScreen(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 InfoRow("产品型号", disInfo.model)
                 InfoRow("序列号", disInfo.serial)
                 InfoRow("硬件版本", disInfo.hardwareRev)
                 InfoRow("固件版本", disInfo.firmwareRev)
                 InfoRow("制造商", disInfo.manufacturer)
+            }
+        }
+
+        // ── Device Name ───────────────────────────────────
+        Text("设备名称", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        HorizontalDivider()
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // 当前名称
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "当前名称: ",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = deviceName.ifEmpty { "未读取" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { viewModel.onRefreshName() }) {
+                        Text("刷新")
+                    }
+                }
+
+                // 编辑名称
+                if (isEditingName) {
+                    OutlinedTextField(
+                        value = editName,
+                        onValueChange = { if (it.length <= 20) editName = it },
+                        label = { Text("新名称（最长 20 字节）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                viewModel.onSaveName(editName)
+                                isEditingName = false
+                            },
+                        ) {
+                            Text("保存")
+                        }
+                        TextButton(onClick = { isEditingName = false }) {
+                            Text("取消")
+                        }
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = {
+                            editName = deviceName
+                            isEditingName = true
+                            viewModel.onClearNameMessage()
+                        },
+                    ) {
+                        Text("修改名称")
+                    }
+                }
+
+                // 提示信息
+                nameMessage?.let { msg ->
+                    Text(
+                        text = msg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Text(
+                    "修改后需断开重连，扫描列表才显示新名称",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                )
             }
         }
 
@@ -89,8 +167,14 @@ fun DeviceScreen(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("当前版本: ${disInfo.firmwareRev}", style = MaterialTheme.typography.bodyMedium)
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "当前版本: ${disInfo.firmwareRev}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 OutlinedButton(onClick = onSelectFirmware) {
                     Icon(Icons.Default.FileOpen, contentDescription = null)
                     Text("  选择升级包")
@@ -107,12 +191,17 @@ fun DeviceScreen(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("雷达电源", style = MaterialTheme.typography.bodyLarge)
-                Switch(checked = radarOn, onCheckedChange = onRadarToggle)
+                Switch(
+                    checked = deviceStatus.radarOnline,
+                    onCheckedChange = { viewModel.onRadarToggle(it) },
+                )
             }
         }
 
@@ -126,7 +215,10 @@ fun DeviceScreen(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Button(
                     onClick = { showResetDialog = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -134,14 +226,6 @@ fun DeviceScreen(
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null)
                     Text("  重启设备")
-                }
-                Button(
-                    onClick = { showResetDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = CriticalRed.copy(alpha = 0.8f)),
-                ) {
-                    Icon(Icons.Default.Warning, contentDescription = null)
-                    Text("  恢复出厂设置")
                 }
             }
         }
@@ -156,7 +240,7 @@ fun DeviceScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showResetDialog = false
-                    onSystemReset()
+                    viewModel.onSystemReset()
                 }) { Text("确认") }
             },
             dismissButton = {
@@ -172,7 +256,15 @@ private fun InfoRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }

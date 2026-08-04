@@ -1,4 +1,4 @@
-package com.motobsd.ui.screens
+package com.motobsd.ui.dashboard
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,35 +17,41 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.motobsd.model.AlertLevel
-import com.motobsd.model.ConnectionState
-import com.motobsd.model.DeviceStatus
-import com.motobsd.model.TargetObject
-import com.motobsd.ui.theme.CriticalRed
-import com.motobsd.ui.theme.SafeGray
-import com.motobsd.ui.theme.WarningYellow
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.motobsd.model.BleConnectionState
 import com.motobsd.ui.components.BatteryGauge
 import com.motobsd.ui.components.BlindSpotCard
+import com.motobsd.ui.theme.CriticalRed
 import com.motobsd.ui.theme.MotoBsdBlue
+import com.motobsd.ui.theme.SafeGray
+import com.motobsd.ui.theme.WarningYellow
 
 @Composable
 fun DashboardScreen(
-    connectionState: ConnectionState,
-    alertLeft: AlertLevel,
-    alertRight: AlertLevel,
-    deviceStatus: DeviceStatus,
-    targets: List<TargetObject>,
+    onNavigateToDeviceList: () -> Unit,
     onHideToBackground: () -> Unit,
-    onScan: () -> Unit,
-    onDisconnect: () -> Unit,
     modifier: Modifier = Modifier,
+    viewModel: DashboardViewModel = hiltViewModel(),
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // 连接就绪时自动启动后台服务（通知 + 声音）
+    LaunchedEffect(uiState.connectionState) {
+        if (uiState.connectionState is BleConnectionState.Ready) {
+            com.motobsd.service.BleService.start(context)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -61,12 +67,13 @@ fun DashboardScreen(
         )
 
         // Connection badge
-        val (stateText, stateColor) = when (connectionState) {
-            ConnectionState.Ready -> "⚡ 已连接" to androidx.compose.ui.graphics.Color(0xFF4CAF50)
-            ConnectionState.Scanning, ConnectionState.Connecting, ConnectionState.Subscribing, ConnectionState.Reconnecting ->
-                "⟳ ${connectionState.label}" to androidx.compose.ui.graphics.Color(0xFFFFC107)
-            ConnectionState.Failed -> "✗ ${connectionState.label}" to androidx.compose.ui.graphics.Color(0xFFF44336)
-            ConnectionState.Idle -> "○ 未连接" to androidx.compose.ui.graphics.Color.Gray
+        val (stateText, stateColor) = when (val cs = uiState.connectionState) {
+            is BleConnectionState.Ready -> "⚡ 已连接" to Color(0xFF4CAF50)
+            is BleConnectionState.Scanning -> "⟳ ${cs.label}" to Color(0xFFFFC107)
+            is BleConnectionState.Connecting -> "⟳ ${cs.label}" to Color(0xFFFFC107)
+            is BleConnectionState.Reconnecting -> "⟳ ${cs.label} (第${cs.attempt}次)" to Color(0xFFFFC107)
+            is BleConnectionState.Error -> "✗ ${cs.message}" to Color(0xFFF44336)
+            is BleConnectionState.Disconnected -> "○ 未连接" to Color.Gray
         }
         Text(text = stateText, color = stateColor, style = MaterialTheme.typography.bodyMedium)
 
@@ -75,12 +82,16 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            BlindSpotCard("左", alertLeft, modifier = Modifier.weight(1f))
-            BlindSpotCard("右", alertRight, modifier = Modifier.weight(1f))
+            val leftTarget = uiState.targets.filter { it.side == 0 }.minByOrNull { it.rangeDm }
+            val rightTarget = uiState.targets.filter { it.side == 1 }.minByOrNull { it.rangeDm }
+            BlindSpotCard("左", uiState.alertLeft, Modifier.weight(1f),
+                nearestDistMeters = leftTarget?.rangeMeters, nearestVel = leftTarget?.velocity)
+            BlindSpotCard("右", uiState.alertRight, Modifier.weight(1f),
+                nearestDistMeters = rightTarget?.rangeMeters, nearestVel = rightTarget?.velocity)
         }
 
         // ── Nearest Target ────────────────────────────────
-        if (targets.isNotEmpty()) {
+        if (uiState.targets.isNotEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -88,10 +99,18 @@ fun DashboardScreen(
                 ),
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("最近目标", style = MaterialTheme.typography.labelMedium, color = androidx.compose.ui.graphics.Color.Gray)
-                    targets.sortedBy { it.rangeDm }.take(2).forEach { t ->
+                    Text(
+                        "最近目标",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.Gray,
+                    )
+                    uiState.targets.sortedBy { it.rangeDm }.take(2).forEach { t ->
                         val sideLabel = if (t.side == 0) "左" else "右"
-                        val approach = if (t.velocity > 0) "靠近" else if (t.velocity < 0) "远离" else ""
+                        val approach = when {
+                            t.velocity > 0 -> "靠近"
+                            t.velocity < 0 -> "远离"
+                            else -> ""
+                        }
                         Text(
                             text = "${sideLabel}侧 · ${t.rangeMeters}m · ${t.angle}° · ${t.velocity}m/s $approach",
                             style = MaterialTheme.typography.bodyMedium,
@@ -111,42 +130,44 @@ fun DashboardScreen(
                 containerColor = MaterialTheme.colorScheme.surface,
             ),
         ) {
-            BatteryGauge(status = deviceStatus)
+            BatteryGauge(status = uiState.deviceStatus)
         }
 
         Spacer(Modifier.height(8.dp))
 
         // ── Scan / Disconnect ─────────────────────────────
-        when (connectionState) {
-            ConnectionState.Idle, ConnectionState.Failed -> {
+        when (uiState.connectionState) {
+            is BleConnectionState.Disconnected,
+            is BleConnectionState.Error,
+                -> {
                 Button(
-                    onClick = onScan,
+                    onClick = onNavigateToDeviceList,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = MotoBsdBlue),
                 ) {
-                    Text(if (connectionState == ConnectionState.Failed) "重试扫描" else "扫描设备")
+                    Text(
+                        if (uiState.connectionState is BleConnectionState.Error) "重试扫描"
+                        else "扫描设备"
+                    )
                 }
             }
-            ConnectionState.Ready -> {
+            is BleConnectionState.Ready -> {
                 Button(
-                    onClick = onDisconnect,
+                    onClick = { viewModel.onDisconnect() },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = androidx.compose.ui.graphics.Color(0xFFF44336)
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
                 ) {
                     Text("断开连接")
                 }
             }
             else -> {
-                // Scanning / Connecting / Subscribing / Reconnecting
                 Button(
                     onClick = {},
                     modifier = Modifier.fillMaxWidth(),
                     enabled = false,
                     colors = ButtonDefaults.buttonColors(containerColor = MotoBsdBlue),
                 ) {
-                    Text(connectionState.label)
+                    Text(uiState.connectionState.label)
                 }
             }
         }

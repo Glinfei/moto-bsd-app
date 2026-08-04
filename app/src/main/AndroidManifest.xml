@@ -11,6 +11,7 @@
     <!-- Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Overlay -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -54,9 +55,10 @@
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
 
-        <!-- Overlay Service -->
+        <!-- Overlay Service (foreground = 不被系统杀死，旋转可靠) -->
         <service
             android:name=".service.OverlayService"
+            android:foregroundServiceType="specialUse"
             android:exported="false" />
 
         <!-- DFU Service (MotoBSD subclass of Nordic DfuBaseService) -->

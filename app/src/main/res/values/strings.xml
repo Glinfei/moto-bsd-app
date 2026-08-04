@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MotoBSD</string>
-    <string name="ble_notification_channel_name">MotoBSD 连接状态</string>
-    <string name="ble_notification_channel_desc">BLE 连接状态和盲区指示</string>
-    <string name="alert_notification_channel_name">盲区告警</string>
-    <string name="alert_notification_channel_desc">Critical 级别盲区告警</string>
+    <string name="notification_channel_ble">MotoBSD 连接状态</string>
+    <string name="notification_channel_ble_desc">BLE 连接状态和盲区指示</string>
+    <string name="notification_channel_alert">盲区告警</string>
+    <string name="notification_channel_alert_desc">Critical 级别盲区告警</string>
     <string name="dfu_notification_channel_name">固件升级</string>
     <string name="dfu_notification_channel_desc">DFU 固件升级进度</string>
 </resources>

@@ -1,4 +1,4 @@
-package com.motobsd.ui.screens
+package com.motobsd.ui.onboarding
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
@@ -49,24 +49,52 @@ fun OnboardingScreen(
         AnimatedContent(targetState = step, label = "onboarding") { currentStep ->
             when (currentStep) {
                 0 -> OnboardingPage(
-                    icon = { Icon(Icons.Default.Motorcycle, contentDescription = null, modifier = Modifier.size(80.dp), tint = MotoBsdBlue) },
+                    icon = {
+                        Icon(
+                            Icons.Default.Motorcycle,
+                            contentDescription = null,
+                            modifier = Modifier.size(80.dp),
+                            tint = MotoBsdBlue,
+                        )
+                    },
                     title = "MotoBSD",
                     subtitle = "摩托车盲区检测助手\n\n骑行中屏幕显示盲区指示\n连接 MotoBSD 设备开始",
                 )
                 1 -> OnboardingPage(
-                    icon = { Icon(Icons.Default.Bluetooth, contentDescription = null, modifier = Modifier.size(80.dp), tint = MotoBsdBlue) },
+                    icon = {
+                        Icon(
+                            Icons.Default.Bluetooth,
+                            contentDescription = null,
+                            modifier = Modifier.size(80.dp),
+                            tint = MotoBsdBlue,
+                        )
+                    },
                     title = "蓝牙连接",
                     subtitle = "MotoBSD 通过蓝牙与设备通信\n\n请授予蓝牙和定位权限\n打开手机蓝牙",
                 )
                 2 -> OnboardingPage(
-                    icon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(80.dp), tint = MotoBsdBlue) },
+                    icon = {
+                        Icon(
+                            Icons.Default.Layers,
+                            contentDescription = null,
+                            modifier = Modifier.size(80.dp),
+                            tint = MotoBsdBlue,
+                        )
+                    },
                     title = "悬浮指示",
-                    subtitle = "骑行时在屏幕边缘显示盲区指示\n\n请授予悬浮窗权限\n示范拖拽操作",
+                    subtitle = "骑行时在屏幕边缘显示盲区指示\n\n请授予悬浮窗权限\n可拖拽调整位置",
                 )
                 3 -> OnboardingPage(
-                    icon = { Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(80.dp), tint = MotoBsdBlue) },
+                    icon = {
+                        Icon(
+                            Icons.Default.Notifications,
+                            contentDescription = null,
+                            modifier = Modifier.size(80.dp),
+                            tint = MotoBsdBlue,
+                        )
+                    },
                     title = "告警通知",
-                    subtitle = "告警时发送通知\n绕过勿扰模式\n\n搜索附近的 MotoBSD 设备",
+                    subtitle = "Critical 级别告警时发送通知\n绕过勿扰模式\n\n搜索附近的 MotoBSD 设备",
                 )
             }
         }
