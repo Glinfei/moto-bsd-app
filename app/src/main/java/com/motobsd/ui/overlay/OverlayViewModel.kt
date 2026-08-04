@@ -3,6 +3,7 @@ package com.motobsd.ui.overlay
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.motobsd.data.overlay.OverlayRepository
+import com.motobsd.model.LightBarOrientation
 import com.motobsd.model.OverlayConfig
 import com.motobsd.model.OverlaySize
 import com.motobsd.model.OverlayStyle
@@ -46,6 +47,12 @@ class OverlayViewModel @Inject constructor(
     fun updateConfig(config: OverlayConfig) {
         _config.value = config
         overlayRepository.updateConfig(config)
+    }
+
+    fun toggleLightBarOrientation() {
+        val newOrientation = if (_config.value.lightBarOrientation == LightBarOrientation.Vertical)
+            LightBarOrientation.Horizontal else LightBarOrientation.Vertical
+        updateConfig(_config.value.copy(lightBarOrientation = newOrientation))
     }
 
     fun updateSoundVolume(volume: Int) {

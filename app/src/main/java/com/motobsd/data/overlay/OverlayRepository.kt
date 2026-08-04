@@ -1,6 +1,7 @@
 package com.motobsd.data.overlay
 
 import com.motobsd.data.settings.SettingsRepository
+import com.motobsd.model.LightBarOrientation
 import com.motobsd.model.OverlayConfig
 import com.motobsd.model.OverlaySize
 import com.motobsd.model.OverlayStyle
@@ -44,6 +45,8 @@ class OverlayRepository(
             size = OverlaySize.entries.getOrElse(settings.getOverlaySize()) { OverlaySize.Medium },
             alpha = settings.getOverlayAlpha(),
             swapLeftRight = settings.getOverlaySwap(),
+            lightBarOrientation = LightBarOrientation.entries
+                .getOrElse(settings.getOverlayOrientation()) { LightBarOrientation.Vertical },
         )
         _configFlow.value = config
         return config
@@ -57,6 +60,7 @@ class OverlayRepository(
             settings.setOverlaySize(config.size.ordinal)
             settings.setOverlayAlpha(config.alpha)
             settings.setOverlaySwap(config.swapLeftRight)
+            settings.setOverlayOrientation(config.lightBarOrientation.ordinal)
         }
     }
 

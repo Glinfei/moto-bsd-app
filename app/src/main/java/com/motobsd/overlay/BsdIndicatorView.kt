@@ -12,6 +12,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.view.View
 import com.motobsd.model.AlertLevel
+import com.motobsd.model.LightBarOrientation
 import com.motobsd.model.OverlayConfig
 import com.motobsd.model.OverlayStyle
 
@@ -65,6 +66,7 @@ class BsdIndicatorView(
     private var currentAlpha: Float = 0.6f
     private var showLabel: Boolean = false
     private var currentStyle: OverlayStyle = OverlayStyle.LightBar
+    private var orientation: LightBarOrientation = LightBarOrientation.Vertical
 
     // ── Public API ──────────────────────────────────────
 
@@ -113,6 +115,7 @@ class BsdIndicatorView(
     fun applyConfig(config: OverlayConfig) {
         currentAlpha = config.alpha / 100f
         currentStyle = config.style
+        orientation = config.lightBarOrientation
         // 切样式时重置光带状态
         if (config.style != OverlayStyle.LightBar) {
             pulseAnimator?.cancel()
@@ -169,10 +172,23 @@ class BsdIndicatorView(
         val solidColor = Color.argb(alpha, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))
         val transColor = Color.argb(0, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))
 
-        val gradient = if (side == Side.Left) {
-            LinearGradient(0f, 0f, w, 0f, solidColor, transColor, Shader.TileMode.CLAMP)
-        } else {
-            LinearGradient(0f, 0f, w, 0f, transColor, solidColor, Shader.TileMode.CLAMP)
+        val gradient = when {
+            // 横屏：光带沿屏幕上下边缘（横向横条），垂直方向由屏幕边缘向屏内渐隐
+            orientation == LightBarOrientation.Horizontal ->
+                if (side == Side.Left) {
+                    // 顶部条：y=0 贴屏幕顶边（实色）→ y=h 向内渐隐
+                    LinearGradient(0f, 0f, 0f, h, solidColor, transColor, Shader.TileMode.CLAMP)
+                } else {
+                    // 底部条：y=h 贴屏幕底边（实色）→ y=0 向内渐隐
+                    LinearGradient(0f, 0f, 0f, h, transColor, solidColor, Shader.TileMode.CLAMP)
+                }
+            // 竖屏：光带贴左右边缘（纵向竖条），水平方向由屏幕边缘向屏内渐隐
+            side == Side.Left ->
+                // 左条：x=0 贴屏幕左边（实色）→ x=w 向内渐隐
+                LinearGradient(0f, 0f, w, 0f, solidColor, transColor, Shader.TileMode.CLAMP)
+            else ->
+                // 右条：x=w 贴屏幕右边（实色）→ x=0 向内渐隐
+                LinearGradient(0f, 0f, w, 0f, transColor, solidColor, Shader.TileMode.CLAMP)
         }
 
         paint.shader = gradient

@@ -33,6 +33,7 @@ class SettingsRepository(
         val OVERLAY_SIZE = intPreferencesKey("overlay_size")
         val OVERLAY_ALPHA = intPreferencesKey("overlay_alpha")
         val OVERLAY_SWAP = booleanPreferencesKey("overlay_swap")
+        val OVERLAY_ORIENTATION = intPreferencesKey("overlay_orientation")
 
         // Overlay position
         val LEFT_X = intPreferencesKey("left_x")
@@ -85,6 +86,11 @@ class SettingsRepository(
     suspend fun getOverlaySwap(): Boolean = dataStore.data.first()[Keys.OVERLAY_SWAP] ?: false
     suspend fun setOverlaySwap(swap: Boolean) {
         dataStore.edit { it[Keys.OVERLAY_SWAP] = swap }
+    }
+
+    suspend fun getOverlayOrientation(): Int = dataStore.data.first()[Keys.OVERLAY_ORIENTATION] ?: 0
+    suspend fun setOverlayOrientation(ordinal: Int) {
+        dataStore.edit { it[Keys.OVERLAY_ORIENTATION] = ordinal }
     }
 
     // ── Overlay position ──────────────────────────────────

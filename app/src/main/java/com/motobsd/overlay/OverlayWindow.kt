@@ -17,6 +17,7 @@ import android.widget.Toast
 import com.motobsd.MainActivity
 import com.motobsd.data.overlay.OverlayRepository
 import com.motobsd.model.AlertLevel
+import com.motobsd.model.LightBarOrientation
 import com.motobsd.model.OverlayConfig
 import com.motobsd.model.OverlayStyle
 import kotlinx.coroutines.CoroutineScope
@@ -108,6 +109,7 @@ class OverlayWindow(
     // ── WindowManager ─────────────────────────────────────
 
     private val isLightBar: Boolean get() = config.style == OverlayStyle.LightBar
+    private val isVertical: Boolean get() = config.lightBarOrientation == LightBarOrientation.Vertical
 
     private fun addView(view: View, isLeft: Boolean) {
         val (w, h) = dims()
@@ -123,7 +125,7 @@ class OverlayWindow(
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = if (isLightBar) lightBarX(isLeft, w) else defaultX(isLeft, w)
-            y = if (isLightBar) 0 else defaultY(w)
+            y = if (isLightBar) lightBarY(isLeft, h) else defaultY(w)
         }
         if (!isLightBar) view.setupTouch(isLeft, params)
         wm.addView(view, params)
@@ -135,19 +137,30 @@ class OverlayWindow(
             (view.layoutParams as? WindowManager.LayoutParams)?.let { lp ->
                 lp.width = w; lp.height = h
                 lp.x = if (isLightBar) lightBarX(isLeft, w) else savedX(isLeft, w)
-                lp.y = if (isLightBar) 0 else savedY(isLeft, w)
+                lp.y = if (isLightBar) lightBarY(isLeft, h) else savedY(isLeft, w)
                 try { wm.updateViewLayout(view, lp) } catch (_: Exception) {}
             }
         }
     }
 
     private fun dims(): Pair<Int, Int> = if (isLightBar) {
-        ((60 * context.resources.displayMetrics.density).toInt()) to screenH
+        val bar = (60 * context.resources.displayMetrics.density).toInt()
+        if (isVertical) bar to screenH else screenW to bar
     } else {
         val s = config.size.dp.dpToPx(); s to s
     }
 
-    private fun lightBarX(isLeft: Boolean, w: Int) = if (isLeft) 0 else screenW - w
+    /** 光带 X 位置：竖屏贴左右边缘；横屏整排覆盖水平 */
+    private fun lightBarX(isLeft: Boolean, w: Int): Int = when {
+        isVertical -> if (isLeft) 0 else screenW - w
+        else -> 0 // 横屏：覆盖整条
+    }
+
+    /** 光带 Y 位置：竖屏贴顶；横屏贴上下边缘 */
+    private fun lightBarY(isLeft: Boolean, h: Int): Int = when {
+        isVertical -> 0
+        else -> if (isLeft) 0 else screenH - h
+    }
 
     // ── Touch (仅图标模式) ───────────────────────────────
 

@@ -20,6 +20,18 @@ enum class OverlaySize(val label: String, val dp: Float) {
 }
 
 /**
+ * 光带布局方向。
+ *
+ * 用户手动选择，不自动感知屏幕旋转：
+ * - [Vertical]  竖屏布局 —— 光带贴屏幕左右边缘、满屏高。
+ * - [Horizontal] 横屏布局 —— 光带贴屏幕上下边缘、横向横条。
+ */
+enum class LightBarOrientation(val label: String) {
+    Vertical("竖屏"),
+    Horizontal("横屏"),
+}
+
+/**
  * 悬浮窗配置 — 持久化到 DataStore。
  */
 data class OverlayConfig(
@@ -29,6 +41,8 @@ data class OverlayConfig(
     val alpha: Int = 60,
     /** 左右反转（适配雷达安装方向） */
     val swapLeftRight: Boolean = false,
+    /** 光带布局方向（用户手动切换） */
+    val lightBarOrientation: LightBarOrientation = LightBarOrientation.Vertical,
     /** left dot 自定义位置 (fraction of screen), null=用默认 */
     val leftXFraction: Float? = null,
     val leftYFraction: Float? = null,

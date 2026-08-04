@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.motobsd.model.LightBarOrientation
 import com.motobsd.model.OverlaySize
 import com.motobsd.ui.components.StyleSelector
 import com.motobsd.ui.theme.CriticalRed
@@ -307,10 +308,15 @@ fun OverlaySettingsScreen(
         Spacer(Modifier.height(8.dp))
 
         OutlinedButton(
-            onClick = { com.motobsd.service.OverlayService.refresh(context) },
+            onClick = { viewModel.toggleLightBarOrientation() },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("切换横竖屏")
+            Text(
+                if (config.lightBarOrientation == LightBarOrientation.Vertical)
+                    "光带：竖屏（点击切横屏）"
+                else
+                    "光带：横屏（点击切竖屏）"
+            )
         }
 
         Spacer(Modifier.height(8.dp))
