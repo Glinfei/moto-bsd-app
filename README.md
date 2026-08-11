@@ -49,6 +49,35 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 没有 `keystore.properties` 时 release 构建会回退 debug 签名，仅用于本地验证，不能分发。
 
+### 发布新版本（Release）
+
+**方式一：CI 自动发布（推荐）**
+
+1. 在仓库 Settings → Secrets and variables → Actions 配置签名 secrets：
+   - `KEYSTORE_BASE64`：`base64 -w0 motobsd-release.jks` 的输出（keystore 文件内容的 base64）
+   - `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`：与 keystore.properties 一致
+2. 打 tag 推送，Actions 自动构建正式签名包并发布 Release：
+
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+发布后用户可直接下载（二维码 / 下载页指向这个地址即可，恒定指向最新版）：
+
+```
+https://github.com/Glinfei/moto-bsd-app/releases/latest/download/app-release.apk
+```
+
+**方式二：手动发布**
+
+```bash
+./gradlew assembleRelease
+gh release create v1.0.0 app/build/outputs/apk/release/app-release.apk --title "v1.0.0" --notes "更新说明"
+```
+
+或直接在 GitHub 网页 Releases → Draft a new release → 上传 APK。
+
 ## 真机验证清单
 
 以下是目前按文档假设、**尚未真机标定**的参数，欢迎实测后在 Issues 反馈：
