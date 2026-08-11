@@ -387,13 +387,12 @@ Disconnected ──connect(mac)──▶ Connecting ──onReady──▶ Ready
 
 | 权限 | 用途 | 运行时请求 |
 |------|------|-----------|
-| BLUETOOTH / BLUETOOTH_ADMIN | 旧版蓝牙（minSdk 26 兼容） | 否 |
-| BLUETOOTH_SCAN / BLUETOOTH_CONNECT | Android 12+ BLE | onResume 一次性请求 |
-| ACCESS_FINE_LOCATION | BLE 扫描必需 | onResume 一次性请求 |
+| BLUETOOTH / BLUETOOTH_ADMIN（maxSdk 30） | Android 8-11 旧版蓝牙 | 否 |
+| BLUETOOTH_SCAN（neverForLocation）/ BLUETOOTH_CONNECT | Android 12+ BLE | onResume 一次性请求 |
+| ACCESS_FINE_LOCATION（maxSdk 30） | 仅 Android 8-11 BLE 扫描 | 仅 < Android 12 请求 |
 | POST_NOTIFICATIONS | Android 13+ 通知 | onResume 一次性请求 |
 | SYSTEM_ALERT_WINDOW | 悬浮窗 | 每进程提示一次（跳系统设置） |
 | FOREGROUND_SERVICE / CONNECTED_DEVICE / SPECIAL_USE | 前台服务 | 否 |
-| USE_EXACT_ALARM | 预留（当前未使用） | 否 |
 | VIBRATE | 告警震动 | 否 |
 
 服务声明：BleService `connectedDevice`；OverlayService `specialUse`；DfuService `connectedDevice`。
