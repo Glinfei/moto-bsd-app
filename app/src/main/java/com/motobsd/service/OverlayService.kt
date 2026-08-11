@@ -37,6 +37,8 @@ class OverlayService : Service() {
     private lateinit var overlayWindow: OverlayWindow
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var windowShown = false
+    /** 本次启动是否已通过 ACTION_RIDE_MODE 明确设置过，避免 onCreate 的持久化加载覆盖 */
+    private var rideModeIntentHandled = false
 
     override fun onCreate() {
         super.onCreate()
@@ -49,6 +51,13 @@ class OverlayService : Service() {
 
         overlayWindow = OverlayWindow(this, overlayRepository)
         OverlayWindowHolder.window = overlayWindow
+
+        // 恢复上次的骑行模式（进程被杀后 START_STICKY 重启场景）
+        scope.launch {
+            val rideMode = overlayRepository.loadRideModeEnabled()
+            if (!rideModeIntentHandled) overlayWindow.setKeepScreenOn(rideMode)
+        }
+
         // 同步当前连接状态（断线时立即显示灰色呼吸，而非普通"安全"）
         OverlayWindowHolder.updateConnectionState(
             bleRepository.connectionState.value is com.motobsd.model.BleConnectionState.Ready
@@ -74,6 +83,12 @@ class OverlayService : Service() {
                 overlayWindow.hide()
                 windowShown = false
                 stopSelf()
+            }
+            ACTION_RIDE_MODE -> {
+                rideModeIntentHandled = true
+                overlayWindow.setKeepScreenOn(
+                    intent?.getBooleanExtra(EXTRA_RIDE_MODE, false) ?: false
+                )
             }
             else -> if (canShowOverlay() && !windowShown) scope.launch { showWindow() }
         }
@@ -131,6 +146,8 @@ class OverlayService : Service() {
     companion object {
         const val ACTION_REFRESH = "com.motobsd.action.REFRESH_OVERLAY"
         const val ACTION_STOP = "com.motobsd.action.STOP_OVERLAY"
+        const val ACTION_RIDE_MODE = "com.motobsd.action.RIDE_MODE"
+        const val EXTRA_RIDE_MODE = "extra_ride_mode"
 
         /** 当前是否运行中（供设置页开关显示状态） */
         @Volatile
@@ -149,6 +166,16 @@ class OverlayService : Service() {
         fun stop(context: Context) {
             context.startService(
                 Intent(context, OverlayService::class.java).apply { action = ACTION_STOP }
+            )
+        }
+
+        /** 骑行模式：悬浮窗保持屏幕常亮 */
+        fun setRideMode(context: Context, enabled: Boolean) {
+            context.startService(
+                Intent(context, OverlayService::class.java).apply {
+                    action = ACTION_RIDE_MODE
+                    putExtra(EXTRA_RIDE_MODE, enabled)
+                }
             )
         }
     }

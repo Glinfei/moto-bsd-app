@@ -5,6 +5,7 @@ import com.motobsd.model.AlertLevel
 import com.motobsd.model.BleConnectionState
 import com.motobsd.model.DeviceStatus
 import com.motobsd.model.TargetObject
+import com.motobsd.model.TargetRecord
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.UUID
@@ -36,11 +37,20 @@ interface BleRepository {
     /** 左右盲区告警级别。 */
     val alertState: StateFlow<Pair<AlertLevel, AlertLevel>>
 
+    /** 左右威胁度 0~1（由 target_details 距离 + 接近速度计算，驱动悬浮窗连续显示）。 */
+    val threatState: StateFlow<Pair<Float, Float>>
+
+    /** 当前连接 RSSI（dBm，连接就绪后每 5s 轮询一次；未连接为 null）。 */
+    val rssi: StateFlow<Int?>
+
     /** 设备状态（电量/温度/flags）。 */
     val deviceStatus: StateFlow<DeviceStatus>
 
     /** 雷达目标列表。 */
     val targets: StateFlow<List<TargetObject>>
+
+    /** 目标事件记录（以 obj_id 为单位，消失后保留 60 秒）。 */
+    val targetRecords: StateFlow<List<TargetRecord>>
 
     /** DIS 设备信息（制造商/型号/序列号等）。 */
     val disInfo: StateFlow<Map<UUID, String>>
@@ -58,6 +68,13 @@ interface BleRepository {
 
     /** 触发 DFU 模式。 */
     fun triggerDfu(mode: Int = 0x01)
+
+    /**
+     * 进入 DFU 模式：写 dfu_trigger(0x01) 让固件复位进 bootloader，
+     * 并在 DFU 期间抑制自动重连（连接由 Nordic DFU 服务接管）。
+     * @return 是否成功发出触发指令
+     */
+    suspend fun enterDfuMode(): Boolean
 
     /** 读取设备名称并挂起直到完成（成功返回名称，失败返回 null）；结果同步到 [deviceName] */
     suspend fun readDeviceName(): String?

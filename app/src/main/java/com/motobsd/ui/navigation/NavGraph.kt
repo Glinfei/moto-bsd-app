@@ -59,6 +59,7 @@ fun AppNavGraph(
     onboardingComplete: Boolean,
     onOnboardingComplete: () -> Unit,
     onHideToBackground: () -> Unit,
+    onToggleRideMode: (Boolean) -> Unit,
     onSelectFirmware: () -> Unit,
 ) {
     val navController = rememberNavController()
@@ -108,6 +109,7 @@ fun AppNavGraph(
                         navController.navigate(Routes.DEVICE_LIST)
                     },
                     onHideToBackground = onHideToBackground,
+                    onToggleRideMode = onToggleRideMode,
                 )
             }
 

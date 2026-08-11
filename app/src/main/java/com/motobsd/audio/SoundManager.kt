@@ -33,6 +33,8 @@ class SoundManager {
     private var rightFreq = 400
 
     @Volatile private var active = false
+    /** true=媒体音量（默认，支持蓝牙耳机）；false=闹钟音量（可穿透其他声音） */
+    @Volatile private var useMediaStream = true
     private var currentThread: Thread? = null
     private val handler = Handler(Looper.getMainLooper())
 
@@ -49,6 +51,11 @@ class SoundManager {
     fun setRightFreq(hz: Int) { rightFreq = hz.coerceIn(100, 2000) }
     fun getLeftFreq(): Int = leftFreq
     fun getRightFreq(): Int = rightFreq
+
+    /** 设置告警音跟随的音频流 */
+    fun setStreamMode(media: Boolean) {
+        useMediaStream = media
+    }
 
     fun updateAlert(left: AlertLevel, right: AlertLevel) {
         currentLeftLevel = left
@@ -200,7 +207,10 @@ class SoundManager {
         try {
             val track = AudioTrack(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setUsage(
+                        if (useMediaStream) AudioAttributes.USAGE_MEDIA
+                        else AudioAttributes.USAGE_ALARM
+                    )
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build(),
                 AudioFormat.Builder()

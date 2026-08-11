@@ -3,13 +3,12 @@ package com.motobsd.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryFull
-import androidx.compose.material.icons.filled.Thermostat
-import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -18,14 +17,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.motobsd.model.DeviceStatus
 import com.motobsd.ui.theme.CriticalRed
-import com.motobsd.ui.theme.MotoBsdBlue
 import com.motobsd.ui.theme.WarningYellow
 
 /**
- * 电量 + 温度 + USB 状态指示。
+ * 电量指示（骑行前必看信息，常驻 Dashboard 首屏）。
+ * 温度 / USB / 雷达等次要信息由 Dashboard 的"详情"折叠区展示。
  */
 @Composable
 fun BatteryGauge(
@@ -35,27 +35,30 @@ fun BatteryGauge(
     val barColor = when {
         status.batteryPercent < 20 -> CriticalRed
         status.batteryPercent < 50 -> WarningYellow
-        else -> MotoBsdBlue
+        // 绿色系：与"连接中=蓝色"的语义解耦，电量不与其他状态混淆
+        else -> Color(0xFF4CAF50)
     }
 
     Column(
-        modifier = modifier.fillMaxWidth().padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = modifier.fillMaxWidth().padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = Icons.Default.BatteryFull,
                 contentDescription = "电量",
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
                 tint = barColor,
             )
             Text(
                 text = "${status.batteryPercent}%",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
             )
+            Spacer(Modifier.weight(1f))
             Text(
                 text = String.format("%.1fV", status.batteryVoltage / 1000f),
                 style = MaterialTheme.typography.bodySmall,
@@ -68,45 +71,5 @@ fun BatteryGauge(
             color = barColor,
             trackColor = barColor.copy(alpha = 0.2f),
         )
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Thermostat,
-                    contentDescription = "温度",
-                    modifier = Modifier.size(16.dp),
-                    tint = Color.Gray,
-                )
-                Text(
-                    text = "${status.temperature.toInt()}°C",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (status.usbConnected) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Usb,
-                        contentDescription = "USB",
-                        modifier = Modifier.size(16.dp),
-                        tint = MotoBsdBlue,
-                    )
-                    Text(
-                        text = "USB",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MotoBsdBlue,
-                    )
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val radarColor = if (status.radarOnline) Color(0xFF4CAF50) else Color.Gray
-                Text(
-                    text = if (status.radarOnline) "雷达 ●" else "雷达 ○",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = radarColor,
-                )
-            }
-        }
     }
 }

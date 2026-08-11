@@ -13,7 +13,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.motobsd.data.ble.BleRepository
 import com.motobsd.data.settings.SettingsRepository
+import com.motobsd.model.BleConnectionState
 import com.motobsd.service.BleService
 import com.motobsd.service.DfuService
 import com.motobsd.service.OverlayService
@@ -29,6 +31,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var bleRepository: BleRepository
 
     private var onboardingComplete = false
     /** 本次进程内是否已引导过悬浮窗权限，避免每次 onResume 都强制跳转系统设置页 */
@@ -68,6 +71,7 @@ class MainActivity : ComponentActivity() {
                         OverlayService.start(this)
                         moveTaskToBack(true)
                     },
+                    onToggleRideMode = { enabled -> toggleRideMode(enabled) },
                     onSelectFirmware = {
                         dfuFilePicker.launch("application/zip")
                     },
@@ -123,6 +127,12 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this@MainActivity, "请先连接设备", Toast.LENGTH_SHORT).show()
                 return@launch
             }
+            // 先写 dfu_trigger(0x01) 让固件复位进 bootloader，再交给 Nordic DFU 库传输
+            val triggered = bleRepository.enterDfuMode()
+            if (!triggered) {
+                Toast.makeText(this@MainActivity, "无法触发 DFU：设备未连接", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
             val starter = DfuServiceInitiator(address)
                 .setZip(zipUri)
                 .setUnsafeExperimentalButtonlessServiceInSecureDfuEnabled(true)
@@ -130,6 +140,38 @@ class MainActivity : ComponentActivity() {
                 .setPacketsReceiptNotificationsValue(8)
                 .setNumberOfRetries(5)
             starter.start(this@MainActivity, DfuService::class.java)
+        }
+    }
+
+    // ── Ride mode ─────────────────────────────────────────
+
+    /**
+     * 骑行模式：一键进入骑行状态。
+     * 进入：要求 BLE 已就绪 → 启动 BLE/悬浮窗服务 + 悬浮窗保持屏幕常亮 + 切到后台；
+     * 退出：关闭屏幕常亮（服务继续运行，由用户自行决定是否断开）。
+     */
+    private fun toggleRideMode(enabled: Boolean) {
+        if (enabled) {
+            if (bleRepository.connectionState.value !is BleConnectionState.Ready) {
+                Toast.makeText(this, "请先连接 MotoBSD 设备", Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                !Settings.canDrawOverlays(this)
+            ) {
+                Toast.makeText(
+                    this,
+                    "未开启悬浮窗权限，骑行模式将无法保持屏幕常亮",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            BleService.start(this)
+            OverlayService.setRideMode(this, true)
+            lifecycleScope.launch { settingsRepository.setRideModeEnabled(true) }
+            moveTaskToBack(true)
+        } else {
+            OverlayService.setRideMode(this, false)
+            lifecycleScope.launch { settingsRepository.setRideModeEnabled(false) }
         }
     }
 

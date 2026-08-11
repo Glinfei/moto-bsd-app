@@ -15,8 +15,7 @@ import kotlinx.coroutines.flow.map
  *
  * 统一管理：
  * - 上次连接设备 MAC
- * - 悬浮窗配置（样式/大小/透明度/是否反转）
- * - 悬浮窗位置
+ * - 悬浮窗配置（粗细/透明度/是否反转/方向）
  * - 引导完成标记
  */
 class SettingsRepository(
@@ -29,29 +28,18 @@ class SettingsRepository(
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
 
         // Overlay config
-        val OVERLAY_STYLE = intPreferencesKey("overlay_style")
         val OVERLAY_SIZE = intPreferencesKey("overlay_size")
         val OVERLAY_ALPHA = intPreferencesKey("overlay_alpha")
         val OVERLAY_SWAP = booleanPreferencesKey("overlay_swap")
         val OVERLAY_ORIENTATION = intPreferencesKey("overlay_orientation")
         val OVERLAY_ENABLED = booleanPreferencesKey("overlay_enabled")
-
-        // Overlay position
-        val LEFT_X = intPreferencesKey("left_x")
-        val LEFT_Y = intPreferencesKey("left_y")
-        val RIGHT_X = intPreferencesKey("right_x")
-        val RIGHT_Y = intPreferencesKey("right_y")
-        val LEFT_SCREEN_W = intPreferencesKey("left_screen_w")
-        val LEFT_SCREEN_H = intPreferencesKey("left_screen_h")
-        val RIGHT_SCREEN_W = intPreferencesKey("right_screen_w")
-        val RIGHT_SCREEN_H = intPreferencesKey("right_screen_h")
+        val RIDE_MODE = booleanPreferencesKey("ride_mode")
 
         // Sound
         val SOUND_VOLUME = intPreferencesKey("sound_volume")
         val SOUND_LEFT_FREQ = intPreferencesKey("sound_left_freq")
         val SOUND_RIGHT_FREQ = intPreferencesKey("sound_right_freq")
-
-        val STYLE_MIGRATED = booleanPreferencesKey("style_migrated_v1")
+        val SOUND_STREAM = intPreferencesKey("sound_stream")
     }
 
     // ── MAC ───────────────────────────────────────────────
@@ -73,12 +61,7 @@ class SettingsRepository(
 
     // ── Overlay config ────────────────────────────────────
 
-    suspend fun getOverlayStyle(): Int = dataStore.data.first()[Keys.OVERLAY_STYLE] ?: 0
-    suspend fun setOverlayStyle(ordinal: Int) {
-        dataStore.edit { it[Keys.OVERLAY_STYLE] = ordinal }
-    }
-
-    suspend fun getOverlaySize(): Int = dataStore.data.first()[Keys.OVERLAY_SIZE] ?: 2
+    suspend fun getOverlaySize(): Int = dataStore.data.first()[Keys.OVERLAY_SIZE] ?: 1
     suspend fun setOverlaySize(ordinal: Int) {
         dataStore.edit { it[Keys.OVERLAY_SIZE] = ordinal }
     }
@@ -104,42 +87,17 @@ class SettingsRepository(
         dataStore.edit { it[Keys.OVERLAY_ENABLED] = enabled }
     }
 
-    // ── Overlay position ──────────────────────────────────
+    // ── Ride mode ────────────────────────────────────────
 
-    suspend fun getLeftX(): Int? = dataStore.data.first()[Keys.LEFT_X]
-    suspend fun setLeftX(x: Int) { dataStore.edit { it[Keys.LEFT_X] = x } }
-    suspend fun getLeftY(): Int? = dataStore.data.first()[Keys.LEFT_Y]
-    suspend fun setLeftY(y: Int) { dataStore.edit { it[Keys.LEFT_Y] = y } }
-    suspend fun getRightX(): Int? = dataStore.data.first()[Keys.RIGHT_X]
-    suspend fun setRightX(x: Int) { dataStore.edit { it[Keys.RIGHT_X] = x } }
-    suspend fun getRightY(): Int? = dataStore.data.first()[Keys.RIGHT_Y]
-    suspend fun setRightY(y: Int) { dataStore.edit { it[Keys.RIGHT_Y] = y } }
+    /** 骑行模式是否开启（悬浮窗保持屏幕常亮） */
+    val rideModeEnabled: Flow<Boolean> =
+        dataStore.data.map { it[Keys.RIDE_MODE] ?: false }
 
-    suspend fun getLeftScreenW(): Int = dataStore.data.first()[Keys.LEFT_SCREEN_W] ?: 0
-    suspend fun setLeftScreenW(w: Int) { dataStore.edit { it[Keys.LEFT_SCREEN_W] = w } }
-    suspend fun getLeftScreenH(): Int = dataStore.data.first()[Keys.LEFT_SCREEN_H] ?: 0
-    suspend fun setLeftScreenH(h: Int) { dataStore.edit { it[Keys.LEFT_SCREEN_H] = h } }
-    suspend fun getRightScreenW(): Int = dataStore.data.first()[Keys.RIGHT_SCREEN_W] ?: 0
-    suspend fun setRightScreenW(w: Int) { dataStore.edit { it[Keys.RIGHT_SCREEN_W] = w } }
-    suspend fun getRightScreenH(): Int = dataStore.data.first()[Keys.RIGHT_SCREEN_H] ?: 0
-    suspend fun setRightScreenH(h: Int) { dataStore.edit { it[Keys.RIGHT_SCREEN_H] = h } }
+    suspend fun getRideModeEnabled(): Boolean =
+        dataStore.data.first()[Keys.RIDE_MODE] ?: false
 
-    suspend fun clearPositions() {
-        dataStore.edit {
-            it.remove(Keys.LEFT_X)
-            it.remove(Keys.LEFT_Y)
-            it.remove(Keys.RIGHT_X)
-            it.remove(Keys.RIGHT_Y)
-        }
-    }
-
-    suspend fun clearScreenDims() {
-        dataStore.edit {
-            it.remove(Keys.LEFT_SCREEN_W)
-            it.remove(Keys.LEFT_SCREEN_H)
-            it.remove(Keys.RIGHT_SCREEN_W)
-            it.remove(Keys.RIGHT_SCREEN_H)
-        }
+    suspend fun setRideModeEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.RIDE_MODE] = enabled }
     }
 
     // ── Sound ───────────────────────────────────────────
@@ -159,12 +117,9 @@ class SettingsRepository(
         dataStore.edit { it[Keys.SOUND_RIGHT_FREQ] = hz.coerceIn(100, 2000) }
     }
 
-    // ── Migration ───────────────────────────────────────
-
-    suspend fun isStyleMigrated(): Boolean =
-        dataStore.data.first()[Keys.STYLE_MIGRATED] ?: false
-
-    suspend fun setStyleMigrated() {
-        dataStore.edit { it[Keys.STYLE_MIGRATED] = true }
+    /** 告警音量跟随的音频流：0=媒体（默认，支持蓝牙耳机），1=闹钟（可穿透其他声音） */
+    suspend fun getSoundStream(): Int = dataStore.data.first()[Keys.SOUND_STREAM] ?: 0
+    suspend fun setSoundStream(mode: Int) {
+        dataStore.edit { it[Keys.SOUND_STREAM] = mode }
     }
 }

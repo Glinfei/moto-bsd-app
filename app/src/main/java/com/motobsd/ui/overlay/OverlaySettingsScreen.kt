@@ -1,8 +1,6 @@
 package com.motobsd.ui.overlay
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,7 +28,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,7 +38,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.motobsd.model.LightBarOrientation
 import com.motobsd.model.OverlaySize
-import com.motobsd.ui.components.StyleSelector
 import com.motobsd.ui.theme.AlertOrange
 import com.motobsd.ui.theme.CriticalRed
 import com.motobsd.ui.theme.MotoBsdBlue
@@ -73,17 +68,8 @@ fun OverlaySettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // ── Style ─────────────────────────────────────────
-        Text("图标样式", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        HorizontalDivider()
-        StyleSelector(
-            current = config.style,
-            onSelect = { viewModel.updateConfig(config.copy(style = it)) },
-            modifier = Modifier.fillMaxWidth(),
-        )
-
         // ── Size ──────────────────────────────────────────
-        Text("图标大小", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("灯带粗细", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         HorizontalDivider()
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -179,6 +165,7 @@ fun OverlaySettingsScreen(
         val soundVolume by viewModel.soundVolume.collectAsStateWithLifecycle()
         val leftFreq by viewModel.leftFreq.collectAsStateWithLifecycle()
         val rightFreq by viewModel.rightFreq.collectAsStateWithLifecycle()
+        val mediaStream by viewModel.mediaStream.collectAsStateWithLifecycle()
 
         Text("声音设置", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         HorizontalDivider()
@@ -201,6 +188,27 @@ fun OverlaySettingsScreen(
                 ),
             )
             Text("${soundVolume}%", style = MaterialTheme.typography.bodyMedium)
+        }
+
+        // 音量跟随的音频流
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text("告警音量跟随", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = if (mediaStream) "媒体音量（推荐，支持蓝牙耳机）"
+                    else "闹钟音量（可穿透其他声音）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SafeGray,
+                )
+            }
+            Switch(
+                checked = mediaStream,
+                onCheckedChange = { viewModel.updateStreamMode(it) },
+            )
         }
 
         // 左频率
@@ -297,19 +305,6 @@ fun OverlaySettingsScreen(
                 checked = config.swapLeftRight,
                 onCheckedChange = { viewModel.updateConfig(config.copy(swapLeftRight = it)) },
             )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // ── Reset ─────────────────────────────────────────
-        Button(
-            onClick = { viewModel.onResetPosition() },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-        ) {
-            Text("重置为默认位置")
         }
 
         Spacer(Modifier.height(8.dp))

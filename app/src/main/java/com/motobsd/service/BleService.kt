@@ -72,10 +72,16 @@ class BleService : LifecycleService() {
             }
         }
 
-        // 观察告警状态 → 更新 Overlay + 发告警通知 + 播放声音
+        // 观察威胁度 → 更新悬浮窗（连续亮度/长度/颜色）
+        lifecycleScope.launch {
+            bleRepository.threatState.collect { (left, right) ->
+                OverlayWindowHolder.updateThreat(left, right)
+            }
+        }
+
+        // 观察告警状态 → 发告警通知 + 播放声音
         lifecycleScope.launch {
             bleRepository.alertState.collect { (left, right) ->
-                OverlayWindowHolder.updateAlert(left, right)
                 handleAlertNotify(left, right)
                 soundManager.updateAlert(left, right)
             }
@@ -86,14 +92,9 @@ class BleService : LifecycleService() {
             soundManager.setVolume(overlayRepository.loadSoundVolume())
             soundManager.setLeftFreq(overlayRepository.loadLeftFreq())
             soundManager.setRightFreq(overlayRepository.loadRightFreq())
+            soundManager.setStreamMode(overlayRepository.loadSoundStream() == 0)
         }
 
-        // 观察电量 → 更新 Overlay
-        lifecycleScope.launch {
-            bleRepository.deviceStatus.collect { status ->
-                OverlayWindowHolder.updateBattery(status.batteryPercent)
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

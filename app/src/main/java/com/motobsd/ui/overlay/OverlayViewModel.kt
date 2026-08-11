@@ -6,7 +6,6 @@ import com.motobsd.data.overlay.OverlayRepository
 import com.motobsd.model.LightBarOrientation
 import com.motobsd.model.OverlayConfig
 import com.motobsd.model.OverlaySize
-import com.motobsd.model.OverlayStyle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +31,10 @@ class OverlayViewModel @Inject constructor(
     private val _rightFreq = MutableStateFlow(400)
     val rightFreq: StateFlow<Int> = _rightFreq.asStateFlow()
 
+    /** true=媒体音量（默认），false=闹钟音量 */
+    private val _mediaStream = MutableStateFlow(true)
+    val mediaStream: StateFlow<Boolean> = _mediaStream.asStateFlow()
+
     private val _overlayRunning = MutableStateFlow(com.motobsd.service.OverlayService.isRunning)
     /** 悬浮窗开关状态（初始化自持久化偏好，默认开启） */
     val overlayRunning: StateFlow<Boolean> = _overlayRunning.asStateFlow()
@@ -42,11 +45,13 @@ class OverlayViewModel @Inject constructor(
             _soundVolume.value = overlayRepository.loadSoundVolume()
             _leftFreq.value = overlayRepository.loadLeftFreq()
             _rightFreq.value = overlayRepository.loadRightFreq()
+            _mediaStream.value = overlayRepository.loadSoundStream() == 0
             _overlayRunning.value = overlayRepository.loadOverlayEnabled()
             // 同步到 SoundManager
             soundManager.setVolume(_soundVolume.value)
             soundManager.setLeftFreq(_leftFreq.value)
             soundManager.setRightFreq(_rightFreq.value)
+            soundManager.setStreamMode(_mediaStream.value)
         }
     }
 
@@ -86,18 +91,16 @@ class OverlayViewModel @Inject constructor(
         viewModelScope.launch { overlayRepository.saveRightFreq(hz) }
     }
 
+    fun updateStreamMode(media: Boolean) {
+        _mediaStream.value = media
+        soundManager.setStreamMode(media)
+        viewModelScope.launch { overlayRepository.saveSoundStream(if (media) 0 else 1) }
+    }
+
     fun setOverlayRunning(running: Boolean) {
         _overlayRunning.value = running
         viewModelScope.launch {
             overlayRepository.saveOverlayEnabled(running)
-        }
-    }
-
-    fun onResetPosition() {
-        // 立即复位正在运行的悬浮窗（清内存缓存 + 回到默认位置）
-        com.motobsd.overlay.OverlayWindowHolder.window?.resetPositions()
-        viewModelScope.launch {
-            overlayRepository.resetPositions()
         }
     }
 
@@ -112,7 +115,8 @@ class OverlayViewModel @Inject constructor(
         _testLeft.value = com.motobsd.model.AlertLevel.entries
             .getOrElse((_testLeft.value.ordinal + 1) % 4) { com.motobsd.model.AlertLevel.Safe }
         com.motobsd.overlay.OverlayWindowHolder.setTestMode(true)
-        com.motobsd.overlay.OverlayWindowHolder.updateAlert(_testLeft.value, _testRight.value)
+        com.motobsd.overlay.OverlayWindowHolder.setTestThreat(
+            threatFor(_testLeft.value), threatFor(_testRight.value))
         soundManager.updateAlert(_testLeft.value, _testRight.value)
     }
 
@@ -120,7 +124,8 @@ class OverlayViewModel @Inject constructor(
         _testRight.value = com.motobsd.model.AlertLevel.entries
             .getOrElse((_testRight.value.ordinal + 1) % 4) { com.motobsd.model.AlertLevel.Safe }
         com.motobsd.overlay.OverlayWindowHolder.setTestMode(true)
-        com.motobsd.overlay.OverlayWindowHolder.updateAlert(_testLeft.value, _testRight.value)
+        com.motobsd.overlay.OverlayWindowHolder.setTestThreat(
+            threatFor(_testLeft.value), threatFor(_testRight.value))
         soundManager.updateAlert(_testLeft.value, _testRight.value)
     }
 
@@ -128,9 +133,16 @@ class OverlayViewModel @Inject constructor(
         _testLeft.value = com.motobsd.model.AlertLevel.Safe
         _testRight.value = com.motobsd.model.AlertLevel.Safe
         com.motobsd.overlay.OverlayWindowHolder.setTestMode(false)
-        com.motobsd.overlay.OverlayWindowHolder.updateAlert(
-            com.motobsd.model.AlertLevel.Safe, com.motobsd.model.AlertLevel.Safe)
+        com.motobsd.overlay.OverlayWindowHolder.setTestThreat(0f, 0f)
         soundManager.updateAlert(
             com.motobsd.model.AlertLevel.Safe, com.motobsd.model.AlertLevel.Safe)
+    }
+
+    /** 测试告警等级 → 威胁度（与真实数据的 0~1 连续映射对齐） */
+    private fun threatFor(level: com.motobsd.model.AlertLevel): Float = when (level) {
+        com.motobsd.model.AlertLevel.Safe -> 0f
+        com.motobsd.model.AlertLevel.Warning -> 0.45f
+        com.motobsd.model.AlertLevel.Alert -> 0.75f
+        com.motobsd.model.AlertLevel.Critical -> 1f
     }
 }

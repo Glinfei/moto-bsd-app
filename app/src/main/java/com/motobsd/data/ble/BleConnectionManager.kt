@@ -83,15 +83,32 @@ class BleConnectionManager(context: Context) : BleManager(context) {
             .enqueue()
     }
 
+    /** 读取一次连接 RSSI（成功后回调，失败忽略，下次轮询再试） */
+    fun readRssi(onResult: (Int) -> Unit) {
+        readRssi()
+            .with(no.nordicsemi.android.ble.callback.RssiCallback { _, rssi -> onResult(rssi) })
+            .enqueue()
+    }
+
     fun writeRadarPower(on: Boolean) {
         radarPowerChar?.let { c ->
             writeCharacteristic(c, byteArrayOf(if (on) 0x01 else 0x00)).enqueue()
         }
     }
 
-    fun triggerDfu(mode: Int = 0x01) {
-        dfuTriggerChar?.let { c ->
-            writeCharacteristic(c, byteArrayOf(mode.toByte())).enqueue()
+    fun triggerDfu(mode: Int = 0x01, onDone: ((Boolean) -> Unit)? = null) {
+        val c = dfuTriggerChar
+        if (c == null) {
+            onDone?.invoke(false)
+            return
+        }
+        val request = writeCharacteristic(c, byteArrayOf(mode.toByte()))
+        if (onDone == null) {
+            request.enqueue()
+        } else {
+            request.done { _ -> onDone(true) }
+                .fail { _, _ -> onDone(false) }
+                .enqueue()
         }
     }
 
@@ -208,12 +225,13 @@ class BleConnectionManager(context: Context) : BleManager(context) {
 
                 // 读取 BAS battery level + 订阅
                 batteryLevelChar?.let { c ->
-                    setNotificationCallback(c).with { _, data ->
-                        val pct = data.value?.get(0)?.toInt()?.and(0xFF) ?: return@with
-                        _deviceStatus.value = _deviceStatus.value.copy(batteryPercent = pct)
-                    }
+                    setNotificationCallback(c).with { _, data -> updateBatteryFromBas(data) }
                     enableNotifications(c).enqueue()
-                    readCharacteristic(c).enqueue()
+                    readCharacteristic(c).with(
+                        no.nordicsemi.android.ble.callback.DataReceivedCallback { _, data ->
+                            updateBatteryFromBas(data)
+                        }
+                    ).enqueue()
                 }
 
                 onReady?.invoke()
@@ -237,6 +255,14 @@ class BleConnectionManager(context: Context) : BleManager(context) {
         val status = Protocol.parseDeviceStatus(data.value)
         _deviceStatus.value = status
         onDeviceStatusChanged?.invoke(status)
+    }
+
+    /** BAS 2A19 电量百分比：BAS 优先于 device_status 的线性换算，同步到仓库 */
+    private fun updateBatteryFromBas(data: Data) {
+        val pct = data.value?.get(0)?.toInt()?.and(0xFF) ?: return
+        val updated = _deviceStatus.value.copy(batteryPercent = pct)
+        _deviceStatus.value = updated
+        onDeviceStatusChanged?.invoke(updated)
     }
 
     // ── DIS ───────────────────────────────────────────────
