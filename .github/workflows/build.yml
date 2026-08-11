@@ -21,14 +21,9 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Build debug APK + unit tests
-        run: ./gradlew assembleDebug testDebugUnitTest --no-daemon
-
-      - name: Upload debug APK (artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: motobsd-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+      # release 变体 + R8 裁剪（无 keystore.properties 时自动回退 debug 签名，可直接安装）
+      - name: Build release APK + unit tests
+        run: ./gradlew assembleRelease testDebugUnitTest --no-daemon
 
       # 每次 push main 自动更新 nightly Release（预发布，不抢占 releases/latest）
       - name: Publish nightly release
@@ -39,10 +34,10 @@ jobs:
           gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
           gh release create nightly \
             --title "Nightly 自动构建" \
-            --notes "每次推送 main 自动生成，仅供尝鲜。正式版请用 v* tag 发布。" \
+            --notes "每次推送 main 自动生成（release 裁剪 + debug 签名，约 2MB）。正式版请用 v* tag 发布。" \
             --prerelease \
             --target main \
-            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release.apk
 
       # 打 tag 且配置了签名 secrets 时，构建正式 release 包并附到 Release
       - name: Set up release signing
@@ -67,7 +62,7 @@ jobs:
 
       - name: Publish versioned release
         uses: softprops/action-gh-release@v2
-        # 只有正式签名包构建成功才发布；未配 secrets 时跳过，避免 tag 构建失败
-        if: startsWith(github.ref, 'refs/tags/v') && hashFiles('app/build/outputs/apk/release/app-release.apk') != ''
+        # 只有配置了正式签名 secrets 才发布，避免把 debug 签名回退包当正式版挂上去
+        if: startsWith(github.ref, 'refs/tags/v') && secrets.KEYSTORE_BASE64 != ''
         with:
           files: app/build/outputs/apk/release/app-release.apk
