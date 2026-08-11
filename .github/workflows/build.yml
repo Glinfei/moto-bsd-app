@@ -11,6 +11,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # secrets 不能直接在 if 条件里引用，放到 job 级 env 再判断
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,11 +48,6 @@ jobs:
       # 打 tag 且配置了签名 secrets 时，构建正式 release 包并附到 Release
       - name: Set up release signing
         if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != ''
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > motobsd-release.jks
           cat > keystore.properties <<EOF
@@ -63,6 +64,6 @@ jobs:
       - name: Publish versioned release
         uses: softprops/action-gh-release@v2
         # 只有配置了正式签名 secrets 才发布，避免把 debug 签名回退包当正式版挂上去
-        if: startsWith(github.ref, 'refs/tags/v') && secrets.KEYSTORE_BASE64 != ''
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != ''
         with:
           files: app/build/outputs/apk/release/app-release.apk
