@@ -51,6 +51,17 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 ### 发布新版本（Release）
 
+**Nightly 自动构建（每次推送 main 即更新）**
+
+每次推送到 `main`，GitHub Actions 会自动构建 debug APK 并更新一个 `nightly` 预发布
+（不会抢占正式版的 `latest`）。最新构建直接下载：
+
+```
+https://github.com/Glinfei/moto-bsd-app/releases/download/nightly/app-debug.apk
+```
+
+> nightly 是 debug 签名包，仅供尝鲜；正式分发请用下面的正式版流程。
+
 **方式一：CI 自动发布（推荐）**
 
 1. 在仓库 Settings → Secrets and variables → Actions 配置签名 secrets：
