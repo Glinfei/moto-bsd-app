@@ -5,6 +5,11 @@ build/
 
 # Local machine configuration
 local.properties
+keystore.properties
+
+# Signing keys
+*.jks
+*.keystore
 
 # IDE
 .idea/
