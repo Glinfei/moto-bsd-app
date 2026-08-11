@@ -49,10 +49,13 @@ class BleService : LifecycleService() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MotoBSD:BleService")
         wakeLock.setReferenceCounted(false)
+        wakeLock.acquire()
 
         // 观察连接状态 → 更新通知 / 自动停止
         lifecycleScope.launch {
             bleRepository.connectionState.collect { state ->
+                // 断线 → 悬浮窗灰色呼吸；重连 → 恢复告警显示
+                OverlayWindowHolder.updateConnectionState(state is BleConnectionState.Ready)
                 when (state) {
                     is BleConnectionState.Ready -> isReady = true
                     is BleConnectionState.Disconnected -> {

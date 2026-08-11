@@ -64,20 +64,34 @@ class SoundManager {
     }
 
     fun previewLeft() {
-        Thread { playPattern(AlertLevel.Warning, leftFreq, (leftFreq * 1.2).toInt().coerceAtMost(2500)) }.start()
+        Thread {
+            playPattern(
+                AlertLevel.Warning,
+                leftFreq,
+                (leftFreq * 1.2).toInt().coerceAtMost(2500),
+                requireActive = false,
+            )
+        }.start()
     }
 
     fun previewRight() {
-        Thread { playPattern(AlertLevel.Warning, rightFreq, rightFreq) }.start()
+        Thread { playPattern(AlertLevel.Warning, rightFreq, rightFreq, requireActive = false) }.start()
     }
 
     /** 预览 Critical（试听紧急音效） */
     fun previewCriticalLeft() {
-        Thread { playPattern(AlertLevel.Critical, leftFreq, (leftFreq * 1.2).toInt().coerceAtMost(2500)) }.start()
+        Thread {
+            playPattern(
+                AlertLevel.Critical,
+                leftFreq,
+                (leftFreq * 1.2).toInt().coerceAtMost(2500),
+                requireActive = false,
+            )
+        }.start()
     }
 
     fun previewCriticalRight() {
-        Thread { playPattern(AlertLevel.Critical, rightFreq, rightFreq) }.start()
+        Thread { playPattern(AlertLevel.Critical, rightFreq, rightFreq, requireActive = false) }.start()
     }
 
     fun release() {
@@ -131,17 +145,22 @@ class SoundManager {
     // ── Pattern ─────────────────────────────────────────
 
     private fun playPattern(level: AlertLevel, freqWarn: Int, freqCrit: Int) {
+        playPattern(level, freqWarn, freqCrit, requireActive = true)
+    }
+
+    /** 试听走 requireActive=false：不依赖"当前有告警"即可播放 */
+    private fun playPattern(level: AlertLevel, freqWarn: Int, freqCrit: Int, requireActive: Boolean) {
         when (level) {
             AlertLevel.Warning -> {
                 repeat(3) {
-                    if (!active) return
+                    if (requireActive && !active) return
                     playTone(freqWarn, 100)
                     sleepOrInterrupt(500)
                 }
             }
             AlertLevel.Critical -> {
                 repeat(5) {
-                    if (!active) return
+                    if (requireActive && !active) return
                     playTone(freqCrit, 80)
                     sleepOrInterrupt(100)
                 }
@@ -157,7 +176,6 @@ class SoundManager {
     // ── PCM Generator ─────────────────────────────────────
 
     private fun playTone(freqHz: Int, durationMs: Int) {
-        if (!active) return
         val sampleRate = 44100
         val numSamples = (sampleRate * durationMs / 1000.0).toInt()
         if (numSamples <= 0) return

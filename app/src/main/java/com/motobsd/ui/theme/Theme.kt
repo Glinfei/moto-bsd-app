@@ -10,10 +10,8 @@ import androidx.compose.ui.graphics.Color
 val MotoBsdBlue = Color(0xFF2196F3)
 val SafeGray = Color(0xFF9E9E9E)
 val WarningYellow = Color(0xFFFFC107)
+val AlertOrange = Color(0xFFFF9800)
 val CriticalRed = Color(0xFFF44336)
-val SafeBg = Color(0xFFF5F5F5)
-val WarningBg = Color(0xFFFFF8E1)
-val CriticalBg = Color(0xFFFFEBEE)
 
 private val DarkColors = darkColorScheme(
     primary = MotoBsdBlue,

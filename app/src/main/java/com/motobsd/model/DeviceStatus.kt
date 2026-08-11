@@ -15,6 +15,6 @@ data class DeviceStatus(
     val temperature: Float = 0f,
     /** bit[0]=USB connected */
     val usbConnected: Boolean = false,
-    /** bit[1]=radar online */
+    /** bit[4]=radar powered/online */
     val radarOnline: Boolean = false,
 )

@@ -32,13 +32,19 @@ class OverlayViewModel @Inject constructor(
     private val _rightFreq = MutableStateFlow(400)
     val rightFreq: StateFlow<Int> = _rightFreq.asStateFlow()
 
+    private val _overlayRunning = MutableStateFlow(com.motobsd.service.OverlayService.isRunning)
+    /** 悬浮窗开关状态（初始化自持久化偏好，默认开启） */
+    val overlayRunning: StateFlow<Boolean> = _overlayRunning.asStateFlow()
+
     init {
         viewModelScope.launch {
             _config.value = overlayRepository.loadConfig()
             _soundVolume.value = overlayRepository.loadSoundVolume()
             _leftFreq.value = overlayRepository.loadLeftFreq()
             _rightFreq.value = overlayRepository.loadRightFreq()
+            _overlayRunning.value = overlayRepository.loadOverlayEnabled()
             // 同步到 SoundManager
+            soundManager.setVolume(_soundVolume.value)
             soundManager.setLeftFreq(_leftFreq.value)
             soundManager.setRightFreq(_rightFreq.value)
         }
@@ -80,7 +86,16 @@ class OverlayViewModel @Inject constructor(
         viewModelScope.launch { overlayRepository.saveRightFreq(hz) }
     }
 
+    fun setOverlayRunning(running: Boolean) {
+        _overlayRunning.value = running
+        viewModelScope.launch {
+            overlayRepository.saveOverlayEnabled(running)
+        }
+    }
+
     fun onResetPosition() {
+        // 立即复位正在运行的悬浮窗（清内存缓存 + 回到默认位置）
+        com.motobsd.overlay.OverlayWindowHolder.window?.resetPositions()
         viewModelScope.launch {
             overlayRepository.resetPositions()
         }
@@ -96,6 +111,7 @@ class OverlayViewModel @Inject constructor(
     fun toggleTestLeft() {
         _testLeft.value = com.motobsd.model.AlertLevel.entries
             .getOrElse((_testLeft.value.ordinal + 1) % 4) { com.motobsd.model.AlertLevel.Safe }
+        com.motobsd.overlay.OverlayWindowHolder.setTestMode(true)
         com.motobsd.overlay.OverlayWindowHolder.updateAlert(_testLeft.value, _testRight.value)
         soundManager.updateAlert(_testLeft.value, _testRight.value)
     }
@@ -103,6 +119,7 @@ class OverlayViewModel @Inject constructor(
     fun toggleTestRight() {
         _testRight.value = com.motobsd.model.AlertLevel.entries
             .getOrElse((_testRight.value.ordinal + 1) % 4) { com.motobsd.model.AlertLevel.Safe }
+        com.motobsd.overlay.OverlayWindowHolder.setTestMode(true)
         com.motobsd.overlay.OverlayWindowHolder.updateAlert(_testLeft.value, _testRight.value)
         soundManager.updateAlert(_testLeft.value, _testRight.value)
     }
@@ -110,6 +127,7 @@ class OverlayViewModel @Inject constructor(
     fun resetTest() {
         _testLeft.value = com.motobsd.model.AlertLevel.Safe
         _testRight.value = com.motobsd.model.AlertLevel.Safe
+        com.motobsd.overlay.OverlayWindowHolder.setTestMode(false)
         com.motobsd.overlay.OverlayWindowHolder.updateAlert(
             com.motobsd.model.AlertLevel.Safe, com.motobsd.model.AlertLevel.Safe)
         soundManager.updateAlert(

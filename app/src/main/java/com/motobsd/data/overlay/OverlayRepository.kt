@@ -24,6 +24,10 @@ class OverlayRepository(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** 悬浮窗开关偏好（默认开启） */
+    suspend fun loadOverlayEnabled(): Boolean = settings.getOverlayEnabled()
+    suspend fun saveOverlayEnabled(enabled: Boolean) { settings.setOverlayEnabled(enabled) }
+
     private val _configFlow = MutableStateFlow(OverlayConfig())
     /** 实时配置流 — OverlayService 观察此流自动应用变更 */
     val configFlow: StateFlow<OverlayConfig> = _configFlow.asStateFlow()
@@ -43,7 +47,7 @@ class OverlayRepository(
         val config = OverlayConfig(
             style = OverlayStyle.entries.getOrElse(migrated) { OverlayStyle.LightBar },
             size = OverlaySize.entries.getOrElse(settings.getOverlaySize()) { OverlaySize.Medium },
-            alpha = settings.getOverlayAlpha(),
+            alpha = settings.getOverlayAlpha().coerceIn(35, 100),
             swapLeftRight = settings.getOverlaySwap(),
             lightBarOrientation = LightBarOrientation.entries
                 .getOrElse(settings.getOverlayOrientation()) { LightBarOrientation.Vertical },
@@ -72,6 +76,15 @@ class OverlayRepository(
         }
     }
 
+    /** 保存位置时的屏幕物理尺寸，旋转后按比例换算坐标用 */
+    suspend fun loadScreenDims(side: BsdSide): Pair<Int, Int> {
+        return if (side == BsdSide.Left) {
+            (settings.getLeftScreenW() to settings.getLeftScreenH())
+        } else {
+            (settings.getRightScreenW() to settings.getRightScreenH())
+        }
+    }
+
     suspend fun savePosition(side: BsdSide, x: Int, y: Int) {
         if (side == BsdSide.Left) {
             settings.setLeftX(x)
@@ -82,8 +95,19 @@ class OverlayRepository(
         }
     }
 
+    suspend fun saveScreenDims(side: BsdSide, w: Int, h: Int) {
+        if (side == BsdSide.Left) {
+            settings.setLeftScreenW(w)
+            settings.setLeftScreenH(h)
+        } else {
+            settings.setRightScreenW(w)
+            settings.setRightScreenH(h)
+        }
+    }
+
     suspend fun resetPositions() {
         settings.clearPositions()
+        settings.clearScreenDims()
     }
 
     // ── Sound ───────────────────────────────────────────

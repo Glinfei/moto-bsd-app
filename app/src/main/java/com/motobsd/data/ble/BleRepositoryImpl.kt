@@ -136,9 +136,8 @@ class BleRepositoryImpl @Inject constructor(
         connectionManager?.triggerDfu(mode)
     }
 
-    override fun readDeviceName() {
-        connectionManager?.readDeviceName()
-    }
+    override suspend fun readDeviceName(): String? =
+        connectionManager?.readDeviceNameResult()
 
     override fun writeDeviceName(name: String) {
         connectionManager?.writeDeviceName(name)
@@ -162,8 +161,11 @@ class BleRepositoryImpl @Inject constructor(
                 handleGattDisconnect()
             }
 
-            onAlertChanged = { left, right ->
-                var l = left; var r = right
+            // 固件只上报"有无目标"（0/1），不做等级决策：
+            // 有 → Warning，无 → Safe，直接驱动悬浮窗/声音/通知。
+            onAlertChanged = { leftPresent, rightPresent ->
+                var l = if (leftPresent) AlertLevel.Warning else AlertLevel.Safe
+                var r = if (rightPresent) AlertLevel.Warning else AlertLevel.Safe
                 if (swapLeftRight) { val t = l; l = r; r = t }
                 _alertState.value = Pair(l, r)
             }
@@ -197,13 +199,22 @@ class BleRepositoryImpl @Inject constructor(
             // 之前已连接或在连接中 → 意外断开，开始重连
             is BleConnectionState.Ready,
             is BleConnectionState.Connecting,
-                -> startReconnect()
+                -> {
+                // 断线后状态不可信：告警/目标复位，悬浮窗回到安全显示
+                _alertState.value = Pair(AlertLevel.Safe, AlertLevel.Safe)
+                _targets.value = emptyList()
+                startReconnect()
+            }
 
             // 已在重连中 → 不做额外处理
             is BleConnectionState.Reconnecting -> return
 
             // 其他状态 → 回 Disconnected
-            else -> _connectionState.value = BleConnectionState.Disconnected
+            else -> {
+                _alertState.value = Pair(AlertLevel.Safe, AlertLevel.Safe)
+                _targets.value = emptyList()
+                _connectionState.value = BleConnectionState.Disconnected
+            }
         }
     }
 

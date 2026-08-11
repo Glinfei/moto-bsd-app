@@ -1,6 +1,5 @@
 package com.motobsd.ble
 
-import com.motobsd.model.AlertLevel
 import com.motobsd.model.DeviceStatus
 import com.motobsd.model.TargetObject
 import java.util.UUID
@@ -51,14 +50,14 @@ object Protocol {
 
     /**
      * 解析 alert_status（1 字节）。
-     * hi_nibble = left alert level, lo_nibble = right alert level.
-     * 0=Safe, 1=Warning, 2=Alert, 3=Critical.
+     * hi_nibble = left 有无目标, lo_nibble = right 有无目标 (0/1)。
+     * 固件只标记"有目标"，不再给出告警等级；App 按有无直接驱动告警显示。
      */
-    fun parseAlertStatus(data: ByteArray?): Pair<AlertLevel, AlertLevel> {
-        if (data == null || data.isEmpty()) return Pair(AlertLevel.Safe, AlertLevel.Safe)
+    fun parseAlertStatus(data: ByteArray?): Pair<Boolean, Boolean> {
+        if (data == null || data.isEmpty()) return Pair(false, false)
         val b = data[0].toInt() and 0xFF
-        val left  = AlertLevel.fromValue((b shr 4) and 0x0F)
-        val right = AlertLevel.fromValue(b and 0x0F)
+        val left  = ((b shr 4) and 0x0F) != 0
+        val right = (b and 0x0F) != 0
         return Pair(left, right)
     }
 
@@ -68,7 +67,7 @@ object Protocol {
      *
      * batt_mv: u16 LE, direct millivolts (VDDHDIV5, already scaled by firmware).
      * temp:    i16 LE, decidegC (e.g., 255 = 25.5°C).
-     * flags:   bit4=radar powered, bit0=USB, bit1=battery not detected.
+     * flags:   bit0=USB connected, bit4=radar powered/online.
      */
     fun parseDeviceStatus(data: ByteArray?): DeviceStatus {
         if (data == null || data.size < 5) return DeviceStatus()
@@ -97,29 +96,32 @@ object Protocol {
 
     /**
      * 解析 target_details 通知（≤48 字节）。
-     * 帧格式: [count, (range, angle_lo, angle_hi, vel, id, level_side)*N].
-     * 每目标 6 字节。
+     * 帧格式: [count: u8, (range_m: i8, angle_deg: i8, velocity_ms: i8, obj_id: u8) × N].
+     * 每目标 4 字节，最多 8 个目标（固件零裁剪透传，任何角度/距离/速度都上报）。
+     * 角度负=左、正=右、0=正后方；速度正=靠近、负=远离。
      */
     fun parseTargetDetails(data: ByteArray?): List<TargetObject> {
-        if (data == null || data.size < 2) return emptyList()
+        if (data == null || data.size < 1) return emptyList()
 
         val count = data[0].toInt() and 0xFF
-        if (count == 0) return emptyList()
 
         val targets = mutableListOf<TargetObject>()
         var offset = 1
         for (i in 0 until count) {
-            if (offset + 5 >= data.size) break
-            val rangeDm = data[offset].toInt() and 0xFF
-            val angleLo = data[offset + 1].toInt() and 0xFF
-            val angleHi = data[offset + 2].toInt() and 0xFF
-            val angle = (angleLo or (angleHi shl 8)).let { if (it > 32767) it - 65536 else it } // i16
-            val vel = (data[offset + 3].toInt() and 0xFF).let { if (it > 127) it - 256 else it } // i8
-            val id = data[offset + 4].toInt() and 0xFF
-            val ls = data[offset + 5].toInt() and 0xFF
-            targets.add(TargetObject(rangeDm = rangeDm, angle = angle, velocity = vel,
-                id = id, levelAndSide = ls))
-            offset += 6
+            if (offset + 4 > data.size) break
+            val range = data[offset].toInt() and 0xFF
+            val angle = data[offset + 1].toInt() and 0xFF
+            val vel   = data[offset + 2].toInt() and 0xFF
+            val id    = data[offset + 3].toInt() and 0xFF
+            targets.add(
+                TargetObject(
+                    rangeM = if (range > 127) range - 256 else range,   // i8
+                    angleDeg = if (angle > 127) angle - 256 else angle,  // i8
+                    velocity = if (vel > 127) vel - 256 else vel,        // i8
+                    id = id,
+                )
+            )
+            offset += 4
         }
         return targets
     }

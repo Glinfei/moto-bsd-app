@@ -25,6 +25,9 @@
     <!-- Vibrate -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- WakeLock (BleService 保活) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- BLE hardware feature (not required — device may not have BLE) -->
     <uses-feature
         android:name="android.hardware.bluetooth_le"

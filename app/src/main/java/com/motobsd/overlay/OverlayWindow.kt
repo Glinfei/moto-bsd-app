@@ -42,16 +42,25 @@ class OverlayWindow(
     private var isAttached = false
     private var screenW: Int = 0
     private var screenH: Int = 0
+    /** 灯带框架尺寸：Android 11+ 使用系统最大窗口区域，自适应状态栏/导航栏/挖孔 */
+    private var barScreenW: Int = 0
+    private var barScreenH: Int = 0
     private var config: OverlayConfig = OverlayConfig()
 
     private var savedLeftX: Int? = null
     private var savedLeftY: Int? = null
     private var savedRightX: Int? = null
     private var savedRightY: Int? = null
+    /** 保存位置时的屏幕物理尺寸，用于旋转后按比例换算坐标 */
+    private var savedLeftW: Int = 0
+    private var savedLeftH: Int = 0
+    private var savedRightW: Int = 0
+    private var savedRightH: Int = 0
 
     private var currentLeftLevel: AlertLevel = AlertLevel.Safe
     private var currentRightLevel: AlertLevel = AlertLevel.Safe
     private var currentBattery: Int = 0
+    private var connected: Boolean = true
 
     // ── public API ────────────────────────────────────────
 
@@ -61,20 +70,29 @@ class OverlayWindow(
         scope.launch {
             val (lx, ly) = overlayRepository.loadPosition(com.motobsd.data.overlay.BsdSide.Left)
             val (rx, ry) = overlayRepository.loadPosition(com.motobsd.data.overlay.BsdSide.Right)
+            val (lw, lh) = overlayRepository.loadScreenDims(com.motobsd.data.overlay.BsdSide.Left)
+            val (rw, rh) = overlayRepository.loadScreenDims(com.motobsd.data.overlay.BsdSide.Right)
             savedLeftX = lx; savedLeftY = ly
             savedRightX = rx; savedRightY = ry
+            savedLeftW = lw; savedLeftH = lh
+            savedRightW = rw; savedRightH = rh
             doShow()
         }
     }
 
     private fun doShow() {
         if (isAttached) { updatePositions(); return }
-        addView(leftView, isLeft = true)
-        addView(rightView, isLeft = false)
-        isAttached = true
-        leftView.applyConfig(config)
-        rightView.applyConfig(config)
-        updatePositions()
+        try {
+            addView(leftView, isLeft = true)
+            addView(rightView, isLeft = false)
+            isAttached = true
+            leftView.applyConfig(config)
+            rightView.applyConfig(config)
+            updatePositions()
+        } catch (_: Exception) {
+            // 无悬浮窗权限等异常：不崩溃，等待权限授予后重新启动 Service
+            isAttached = false
+        }
     }
 
     fun hide() {
@@ -93,16 +111,51 @@ class OverlayWindow(
 
     fun setBattery(pct: Int) { currentBattery = pct }
 
+    /** 断线时悬浮指示切换为灰色呼吸，与"安全"区分 */
+    fun setConnected(connected: Boolean) {
+        if (this.connected == connected) return
+        this.connected = connected
+        leftView.setConnected(connected)
+        rightView.setConnected(connected)
+    }
+
     fun applyConfig(config: OverlayConfig) {
         this.config = config
+
+        // 同步触摸标志：光带不可触摸，图标模式可拖拽/双击/长按
+        listOf(leftView to true, rightView to false).forEach { (view, isLeft) ->
+            val lp = view.layoutParams as? WindowManager.LayoutParams ?: return@forEach
+            if (isLightBar) {
+                lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                view.setOnTouchListener(null)
+            } else {
+                lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                view.setupTouch(isLeft, lp)
+            }
+            try { wm.updateViewLayout(view, lp) } catch (_: Exception) {}
+        }
+
         leftView.applyConfig(config)
         rightView.applyConfig(config)
+        // 样式切换会重置视图内部状态，这里重新应用当前告警级别
+        leftView.setAlertLevel(currentLeftLevel)
+        rightView.setAlertLevel(currentRightLevel)
         updatePositions()
     }
 
-    /** 重读屏幕物理尺寸并更新光带位置。用户点「切换横竖屏」触发。 */
+    /** 重读屏幕物理尺寸并更新位置。旋转 / 切换横竖屏时触发。 */
     fun refresh() {
         updateScreenSize()
+        updatePositions()
+    }
+
+    /** 清除保存的位置并回到默认位置（用户点「重置为默认位置」触发）。 */
+    fun resetPositions() {
+        savedLeftX = null; savedLeftY = null
+        savedRightX = null; savedRightY = null
+        savedLeftW = 0; savedLeftH = 0
+        savedRightW = 0; savedRightH = 0
+        scope.launch { overlayRepository.resetPositions() }
         updatePositions()
     }
 
@@ -120,6 +173,7 @@ class OverlayWindow(
             else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 (if (isLightBar) WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE else 0),
             PixelFormat.TRANSLUCENT,
         ).apply {
@@ -144,22 +198,33 @@ class OverlayWindow(
     }
 
     private fun dims(): Pair<Int, Int> = if (isLightBar) {
-        val bar = (60 * context.resources.displayMetrics.density).toInt()
-        if (isVertical) bar to screenH else screenW to bar
+        val bar = (40 * context.resources.displayMetrics.density).toInt()
+        if (isVertical) bar to barScreenH else barScreenW to bar
     } else {
         val s = config.size.dp.dpToPx(); s to s
     }
 
-    /** 光带 X 位置：竖屏贴左右边缘；横屏整排覆盖水平 */
+    /** 光带 X 位置：左右边缘模式贴左右边缘；上下边缘模式整排覆盖水平 */
     private fun lightBarX(isLeft: Boolean, w: Int): Int = when {
-        isVertical -> if (isLeft) 0 else screenW - w
+        isVertical -> if (isLeft) 0 else barScreenW - w
         else -> 0 // 横屏：覆盖整条
     }
 
-    /** 光带 Y 位置：竖屏贴顶；横屏贴上下边缘 */
+    /**
+     * 光带 Y 位置：左右边缘模式贴顶；上下边缘模式贴上下边。
+     * Android 11+ 的 barScreen 已自动排除不透明系统栏，无需再手动减导航栏高度；
+     * 低版本回退到物理尺寸 + 资源导航栏高度。
+     */
     private fun lightBarY(isLeft: Boolean, h: Int): Int = when {
         isVertical -> 0
-        else -> if (isLeft) 0 else screenH - h
+        else -> if (isLeft) 0 else {
+            val bottom = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                barScreenH
+            } else {
+                (barScreenH - getNavBarHeight()).coerceAtLeast(0)
+            }
+            (bottom - h).coerceAtLeast(0)
+        }
     }
 
     // ── Touch (仅图标模式) ───────────────────────────────
@@ -205,16 +270,15 @@ class OverlayWindow(
     }
 
     private fun showPopupMenu(anchor: View, isLeft: Boolean) {
-        val sideLabel = if (isLeft) "左" else "右"
-        val sideLevel = if (isLeft) currentLeftLevel else currentRightLevel
-        val lc = when (sideLevel) {
+        val worst = maxOf(currentLeftLevel.ordinal, currentRightLevel.ordinal)
+        val lc = when (AlertLevel.entries.getOrElse(worst) { AlertLevel.Safe }) {
             AlertLevel.Safe -> Color.parseColor("#9E9E9E")
             AlertLevel.Warning -> Color.parseColor("#FFC107")
             AlertLevel.Alert -> Color.parseColor("#FF9800")
             AlertLevel.Critical -> Color.parseColor("#F44336")
         }
         val tv = TextView(context).apply {
-            text = "$sideLabel · ${sideLevel.label} · ${currentBattery}%"
+            text = "左:${currentLeftLevel.label}  右:${currentRightLevel.label}\n电量 ${currentBattery}%"
             setTextColor(lc); textSize = 14f; setPadding(20, 14, 20, 14)
             setBackgroundColor(Color.parseColor("#E0282828"))
         }
@@ -223,8 +287,19 @@ class OverlayWindow(
             isOutsideTouchable = true; isFocusable = true
         }
         val loc = IntArray(2); anchor.getLocationOnScreen(loc)
+        // 先测量内容宽度，避免右侧弹窗超出屏幕左边缘
+        tv.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val popW = tv.measuredWidth.coerceAtLeast(1)
+        val x = if (isLeft) {
+            (loc[0] + anchor.width + 12).coerceAtMost(screenW - popW)
+        } else {
+            (loc[0] - popW - 12).coerceAtLeast(0)
+        }
         popup.showAtLocation(anchor, Gravity.NO_GRAVITY,
-            if (isLeft) loc[0] + anchor.width + 12 else loc[0] - 12,
+            x,
             loc[1] + anchor.height / 2 - 25)
     }
 
@@ -242,7 +317,8 @@ class OverlayWindow(
     private fun checkOverlap() {
         val ll = leftView.layoutParams as WindowManager.LayoutParams
         val rl = rightView.layoutParams as WindowManager.LayoutParams
-        val t = config.size.dp * 3f
+        // 阈值统一为像素：size(dpi 值) * 3 * density
+        val t = config.size.dp * 3f * context.resources.displayMetrics.density
         val dx = abs((ll.x + leftView.width / 2) - (rl.x + rightView.width / 2))
         val dy = abs((ll.y + leftView.height / 2) - (rl.y + rightView.height / 2))
         if (sqrt((dx * dx + dy * dy).toDouble()) < t) {
@@ -263,9 +339,23 @@ class OverlayWindow(
         return sh + (screenH - sh - nh - s) / 2
     }
     private fun savedX(isLeft: Boolean, s: Int): Int =
-        (if (isLeft) savedLeftX else savedRightX)?.coerceIn(0, screenW - s) ?: defaultX(isLeft, s)
+        savedXValue(isLeft)?.coerceIn(0, screenW - s) ?: defaultX(isLeft, s)
     private fun savedY(isLeft: Boolean, s: Int): Int =
-        (if (isLeft) savedLeftY else savedRightY)?.coerceIn(getStatusBarHeight(), screenH - getNavBarHeight() - s) ?: defaultY(s)
+        savedYValue(isLeft)?.coerceIn(getStatusBarHeight(), screenH - getNavBarHeight() - s) ?: defaultY(s)
+
+    /** 旋转后按保存时的屏幕尺寸比例换算 X，避免坐标错乱 */
+    private fun savedXValue(isLeft: Boolean): Int? {
+        val sx = (if (isLeft) savedLeftX else savedRightX) ?: return null
+        val sw = if (isLeft) savedLeftW else savedRightW
+        return if (sw > 0 && sw != screenW) (sx.toLong() * screenW / sw).toInt() else sx
+    }
+
+    /** 旋转后按保存时的屏幕尺寸比例换算 Y */
+    private fun savedYValue(isLeft: Boolean): Int? {
+        val sy = (if (isLeft) savedLeftY else savedRightY) ?: return null
+        val sh = if (isLeft) savedLeftH else savedRightH
+        return if (sh > 0 && sh != screenH) (sy.toLong() * screenH / sh).toInt() else sy
+    }
     private fun savePositionAsync(isLeft: Boolean, view: View) {
         val lp = view.layoutParams as WindowManager.LayoutParams
         if (isLeft) { savedLeftX = lp.x; savedLeftY = lp.y }
@@ -273,6 +363,7 @@ class OverlayWindow(
         scope.launch {
             val side = if (isLeft) com.motobsd.data.overlay.BsdSide.Left else com.motobsd.data.overlay.BsdSide.Right
             overlayRepository.savePosition(side, lp.x, lp.y)
+            overlayRepository.saveScreenDims(side, screenW, screenH)
         }
     }
     private fun updateScreenSize() {
@@ -281,6 +372,16 @@ class OverlayWindow(
         wm.defaultDisplay.getRealMetrics(dm)
         screenW = dm.widthPixels
         screenH = dm.heightPixels
+
+        // 灯带框架：优先使用系统最大窗口区域（自动排除不透明系统栏、适配透明栏）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.maximumWindowMetrics.bounds
+            barScreenW = bounds.width()
+            barScreenH = bounds.height()
+        } else {
+            barScreenW = screenW
+            barScreenH = screenH
+        }
     }
     private fun getStatusBarHeight(): Int {
         val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")

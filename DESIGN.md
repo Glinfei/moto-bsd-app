@@ -1,758 +1,457 @@
 # MotoBSD Android App — 设计文档
 
-## 项目背景
+> 版本：0.5.0（2026-08-04）· 本文档与当前代码实现保持一致。
+> 0.4 重构前的旧设计文档已失效，不再作为参考。
+
+## 1. 项目背景
 
 MotoBSD 是摩托车盲区检测（BSD）固件项目，运行于 nRF52840 + 60GHz 毫米波雷达（AT6010）。
 通过 BLE 将告警状态、目标详情、设备状态上报给手机。
 
 本 App 是配套的手机端应用——**只做 Android**。
 
-**iOS 不做**，原因：[见第3节](#3-为什么只做-android)。
-
----
-
-## 核心场景
+## 2. 核心场景
 
 ```
 用户骑车出行：
   1. 发动摩托车 → MotoBSD 设备上电 → BLE 开始广播
-  2. 手机自动连接 MotoBSD（后台 Service）
+  2. 手机连接 MotoBSD（首次需手动扫描选择，之后自动重连）
   3. 用户打开高德地图全屏导航
-  4. 屏幕两侧各出现一个半透明圆点（叠在地图之上）
+  4. 屏幕两侧出现盲区指示（光带 / 圆点 / 竖条 / 箭头，叠加在地图之上）
      左侧 = 左盲区状态   右侧 = 右盲区状态
-     灰色 = 安全          黄色 = Warning
+     灰色/透明 = 安全    黄色 = Warning / Alert
      红色闪烁 = Critical
-  5. 用户余光感知圆点颜色变化，无需切换 App
+  5. 用户余光感知指示变化，无需切换 App
 ```
 
 **关键体验**：不遮挡、不打扰导航；需要关注时才进入视线。
 
----
-
-## 架构
+## 3. 架构
 
 ```
-┌─────────────────────────────────────────────────┐
-│ MainActivity (Jetpack Compose)                  │
-│  ┌─────────┐ ┌──────────┐ ┌──────────┐         │
-│  │ 状态 Tab │ │ 设备 Tab  │ │ 图标设置  │         │
-│  │ 盲区卡片 │ │ 版本/DFU │ │ 样式/大小 │         │
-│  │ 电量/温度│ │ 雷达开关 │ │ 位置预览  │         │
-│  │ [收起]  │ │ 系统复位 │ │ 重置位置  │         │
-│  └─────────┘ └──────────┘ └──────────┘         │
-└─────────────────────────────────────────────────┘
-            ↕ Intent
-┌─────────────────────────────────────────────────┐
-│ BleService (Foreground Service)                 │
-│  - BLE 扫描/连接/重连                           │
-│  - 订阅 alert_status / target_details /         │
-│    device_status notify                         │
-│  - 解析数据 → LiveData / Flow                   │
-│  - 持久通知：显示当前盲区状态                    │
-└─────────────────────────────────────────────────┘
-            ↕ AlertState
-┌─────────────────────────────────────────────────┐
-│ OverlayService                                  │
-│  - WindowManager 叠加两个 BsdIndicatorView      │
-│  - 监听 AlertState → 更新颜色/闪烁              │
-│  - 拖拽 → 保存位置到 SharedPreferences           │
-│  - 横竖屏切换 → 自动调整默认位置                 │
-│  - 点击圆点 → 打开 MainActivity                 │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ MainActivity (Jetpack Compose)                          │
+│  底部导航三页：                                          │
+│  · 状态 Tab：盲区卡片 / 最近目标 / 电量温度 / 连接操作    │
+│  · 设备 Tab：DIS 信息 / 设备名称 / DFU / 雷达开关 / 重启  │
+│  · 图标 Tab：样式/大小/透明度 / 测试告警 / 声音 / 位置    │
+│  子页面：设备列表（扫描）、首次引导（4 屏）               │
+└───────────────────────────┬─────────────────────────────┘
+                            │ startForegroundService
+        ┌───────────────────┴───────────────────┐
+        │ BleService (Foreground, connectedDevice) │
+        │  - 观察仓库状态 → 持久通知 / 告警通知    │
+        │  - 告警声音 + 震动 + WakeLock 保活       │
+        │  - 状态推送 → OverlayWindowHolder        │
+        └───────────────────┬───────────────────┘
+                            │ 观察 StateFlow
+        ┌───────────────────┴───────────────────┐
+        │ BleRepositoryImpl（单例）              │
+        │  - BLE 扫描 / 连接 / 重连状态机        │
+        │  - alert / target / device / DIS 状态  │
+        │  - 左右反转（雷达安装方向适配）         │
+        │  - 数据经 BleConnectionManager (Nordic) │
+        │    ←→ Protocol.parse 解析字节流        │
+        └────────────────────────────────────────┘
+
+        ┌────────────────────────────────────────┐
+        │ OverlayService (Foreground, specialUse) │
+        │  - WindowManager 叠加两个 BsdIndicatorView │
+        │  - 监听 OverlayRepository.configFlow     │
+        │  - 旋转时刷新位置（比例换算）            │
+        │  - 无悬浮窗权限时不创建窗口、不崩溃      │
+        └────────────────────────────────────────┘
 ```
 
----
+数据流：
 
-## 技术栈
+```
+BLE notify/read → Protocol 解析 → BleConnectionManager 回调
+  → BleRepositoryImpl StateFlow（alertState / targets / deviceStatus / disInfo / deviceName）
+    → ViewModel → Compose UI
+    → BleService → 持久通知 / 告警通知 / 声音 / 震动
+    → OverlayWindowHolder → OverlayWindow → BsdIndicatorView 渲染
+```
+
+## 4. 技术栈
 
 | 组件 | 技术 | 说明 |
 |------|------|------|
 | 语言 | Kotlin | Android 官方语言 |
-| UI | Jetpack Compose | 声明式 UI，Material 3 |
-| BLE | Android BLE API (android.bluetooth.le) | 系统原生，无第三方封装 |
+| UI | Jetpack Compose（Material 3） | 声明式 UI；Compose BOM 2026.05.01 |
+| 依赖注入 | Hilt + KSP | 2.56.1 |
+| BLE | Nordic BLE Library 2.7.0 | `no.nordicsemi.android:ble` |
+| DFU | Nordic DFU 2.7.0 | `no.nordicsemi.android:dfu` |
 | 悬浮窗 | WindowManager (TYPE_APPLICATION_OVERLAY) | 系统级叠加层 |
-| 前台服务 | Service.startForeground() | 后台保活 |
-| 状态管理 | StateFlow + SharedFlow (Kotlin Coroutines) | 响应式数据流 |
-| 持久化 | SharedPreferences / DataStore | 位置、偏好设置 |
-| DFU | Nordic DFU Library | OTA 固件升级 |
+| 前台服务 | Service.startForeground() | BleService / OverlayService |
+| 状态管理 | StateFlow + combine | 响应式数据流 |
+| 持久化 | DataStore Preferences | 位置、配置、声音设置 |
+| 导航 | Navigation Compose | 底部三 Tab + 子页面 |
+| 折叠屏 | androidx.window 1.5.1 | 已引入，避让逻辑未实现 |
+| SDK | minSdk 26 / compile & target 36 | versionName 1.0.0 |
 
----
+## 5. BLE 协议与数据映射
 
-## BLE 数据映射
+### 5.1 自定义服务
 
-MotoBSD 自定义服务 UUID: `b1d30000-9e3f-4b1e-8a3e-7f2b1c3d5e7f`
+服务 UUID：`b1d30000-9e3f-4b1e-8a3e-7f2b1c3d5e7f`
 
 | 特征值 | UUID 后缀 | 操作 | 字节 | 解析 |
 |--------|----------|------|------|------|
-| alert_status | 0001 | read + notify | 1B | `hi_nibble=left, lo_nibble=right` (0=Safe,1=Warning,2=Critical) |
-| target_details | 0002 | notify | ≤48B | `[count, (range,angle,vel,id,level,side)*N]` |
-| device_status | 0003 | read + notify | 5B | `[batt_lo, batt_hi, temp_lo, temp_hi, flags]` |
+| alert_status | 0001 | read + notify | 1B | hi_nibble=left, lo_nibble=right；0=无目标, 1=有目标（仅有无，不定级） |
+| target_details | 0002 | notify | ≤33B | `[count, (range_m, angle_deg, velocity_ms, obj_id)*N]`（每目标 4B，最多 8 个） |
+| device_status | 0003 | read + notify | 5B | `[batt_mv_lo, batt_mv_hi, temp_lo, temp_hi, flags]` |
 | radar_power | 0005 | read + write | 1B | 0=off, 1=on |
 | dfu_trigger | 0007 | write | 1B | 0x01 = 进入 DFU |
 | system_reset | 0008 | write | 1B | 任意值 = 系统复位 |
+| device_name | 0009 | read + write | ≤20B | UTF-8 设备名称（最长 20 字节） |
 
-DIS 标准服务（0x180A）：
+> 连接建立后 `alert_status` / `device_status` 会**主动读取一次初始值**，不依赖设备推送；
+> 订阅 enableNotifications 在 initialize 中完成。
+
+### 5.2 标准服务
+
+DIS（0x180A）：
 
 | 特征值 | UUID | 操作 | 类型 |
 |--------|------|------|------|
 | manufacturer_name | 2A29 | read | String |
-| model_number (PN) | 2A24 | read | String |
-| serial_number (SN) | 2A25 | read | String |
+| model_number | 2A24 | read | String |
+| serial_number | 2A25 | read | String |
 | hardware_revision | 2A27 | read | String |
 | firmware_revision | 2A26 | read | String |
 
----
+BAS（0x180F）：
 
-## 悬浮图标设计
+| 特征值 | UUID | 操作 | 说明 |
+|--------|------|------|------|
+| battery_level | 2A19 | read + notify | 电量百分比，**优先于** device_status 计算的百分比 |
 
-### 默认位置
+### 5.3 解析细节
 
-```
-竖屏（w < h）：
-┌──────────────┐        ● = left_dot（左下，距边缘 16dp）
-│              │        ● = right_dot（右下，距边缘 16dp）
-│     地图     │
-│              │
-│  ●        ● │
-└──────────────┘
+**alert_status（1 字节）**
 
-横屏（w > h）：
-┌────────────────────┐
-│●                ●  │   ● = left_dot（左边缘中，距边缘 16dp）
-│      地图          │   ● = right_dot（右边缘中，距边缘 16dp）
-└────────────────────┘
-```
+`hi_nibble = left`，`lo_nibble = right`。固件只标记**有无目标**（0/1），不再给出告警等级；
+盲区范围 / 阈值 / 等级等策略已从固件移除，数据以 target_details 全量原样上报。
 
-### 拖拽交互
+App 端同样简化：**不做告警等级决策矩阵**，按有无直接驱动显示——
+有目标 → `Warning`（黄），无目标 → `Safe`（灰/透明）。
+
+**device_status（5 字节）**
 
 ```
-按住圆点 → 显示标签（"左"/"右"）→ 跟随手指 → 松手 → 防重叠检测 → 吸附最近边缘
-                                                              ↓
-                                              保存位置到 SharedPreferences
+[batt_lo, batt_hi, temp_lo, temp_hi, flags]
 ```
 
-#### 点击交互
+- `batt_mv`：u16 LE，直接毫伏（固件已按 VDDHDIV5 缩放）
+- `temp`：i16 LE，decidegC（255 = 25.5°C）
+- `flags`：bit0 = USB 连接，bit4 = 雷达上电/在线
+- 电量百分比：BAS 2A19 优先；无 BAS 时线性换算 `(mv-3200)/1000*100`，钳制 0-100
 
-| 操作 | 行为 | 原因 |
+**target_details（每目标 4 字节）**
+
+```
+[count: u8, (range_m: i8, angle_deg: i8, velocity_ms: i8, obj_id: u8) × N]
+```
+
+| 字段 | 格式 | 说明 |
 |------|------|------|
-| 单击 | **不响应** | 用户正在导航中，误触不应切换 App |
-| 双击 | 打开 MainActivity | 有意操作 |
-| 长按（300ms） | 弹出悬浮菜单 | 快速查看状态 + 快捷操作 |
+| range_m | i8 | 距离（m，带符号；有效 0.5-30m） |
+| angle_deg | i8 | 角度（度，带符号；负=左、正=右、0=正后方） |
+| velocity_ms | i8 | 速度（m/s，带符号；正=靠近、负=远离） |
+| obj_id | u8 | 雷达跟踪目标 ID（跨帧稳定） |
 
-长按弹出菜单：
-```
-       ┌──────────────┐
-       │ ⚡ MotoBSD   │
-       │ 左: 安全     │
-       │ 右: Critical │
-       │ 电量: 82%    │
-       │ ─────────── │
-       │ 打开 App     │
-       └──────────────┘
-```
+固件零裁剪透传：任何角度/距离/速度的目标都原样上报，目标数据仅用于 Dashboard 展示。
 
-#### 防重叠机制
+## 6. 告警级别与视觉
 
-松手时检测两圆点距离：
-```
-if distance(leftDot, rightDot) < threshold:
-    → 左圆点自动弹到最近左边缘
-    → 右圆点自动弹到最近右边缘
-    → 小幅度振动反馈
-    → Toast 提示："图标已自动分开"
-```
+| 级别 | 颜色 | 动画（图标模式） | UI 表现 |
+|------|------|------------------|---------|
+| Safe | 灰 `#9E9E9E` | 恒亮 | 卡片灰底、圆点灰 |
+| Warning | 黄 `#FFC107` | 1000ms 周期，70/30 占空比脉冲 | 卡片黄底、黄圆点 |
+| Alert | 橙 `#FF9800` | 500ms 周期，60/40 占空比脉冲 | 橙色圆点 + 闪电图标 |
+| Critical | 红 `#F44336` | 500ms 周期（2Hz），50/50 闪烁 | 红底、红圆点 + 闪电 + 告警通知/震动/声音 |
 
-保存的坐标也做合法性检查：
+级别文案统一中文：安全 / 警告 / 警惕 / 危险。
+
+> 实车数据只产生 Safe / Warning（固件 alert_status 有无目标：有=Warning、无=Safe）；
+> Alert / Critical 由图标设置页的测试告警模式驱动，级别体系保留便于后续扩展。
+
+**告警不自动超时消失**：图标持续显示直到收到 Safe 通知或 BLE 断线。
+
+**断线状态**：断线时悬浮指示切换为**灰色慢速呼吸**（2s 周期），与"安全"的恒亮灰
+（光带模式下为全透明）明确区分；重连后恢复当前级别显示。
+同时 BleRepositoryImpl 把告警/目标复位为 Safe。
+
+> Critical 周期取 500ms（2Hz）而非 200ms（5Hz）：5Hz 闪烁处于光敏性癫痫诱发频段，骑行场景避免。
+
+## 7. BLE 连接状态机
+
 ```kotlin
-fun validatePosition(x: Float, y: Float, side: Side): PointF {
-    // 限制在屏幕范围内
-    val boundedX = x.coerceIn(0f, screenW - dotSize)
-    val boundedY = y.coerceIn(statusBarH, screenH - navBarH - dotSize)
-    
-    // 防重叠：如果两圆点距离 < dotSize * 3，弹回默认位置
-    if (distanceTo(otherDot) < dotSize * 3) {
-        return defaultPosition(side)
-    }
-    return PointF(boundedX, boundedY)
+sealed class BleConnectionState {
+    Disconnected                // 用户主动断开，永不自动重连
+    Scanning                    // 扫描中
+    Connecting(mac)             // 正在连接指定设备
+    Ready                       // 已连接且特征值已订阅
+    Reconnecting(attempt, delayMs) // 意外断开，指数退避重连
+    Error(message)              // 重试耗尽，需用户干预
 }
 ```
 
-### 图标样式（3 种可选）
+转换规则：
 
-| 样式 | 名称 | 不适配时 | 适配时 |
-|------|------|---------|--------|
-| `Dot` | 圆点 | ● 灰色 | 🔴 红色闪烁 |
-| `Bar` | 竖条 | ▎ 灰色 | ▎ 红色 + 脉冲动画 |
-| `Arrow` | 箭头 | ←灰色→ | ←红色→ 脉冲 |
+```
+Disconnected ──connect(mac)──▶ Connecting ──onReady──▶ Ready
+                                     │                    │ 意外断开
+                           用户 disconnect()            ▼
+                                     ▼             Reconnecting
+                              Disconnected    (1s→2s→4s→8s→16s→30s)
+                                                     │ 连续失败
+                                            (15s 超时/异常，最多 10 次)
+                                                     ▼
+                                                   Error
+```
 
-### 属性
+- 扫描：`BleScanner`（callbackFlow），默认 10s 超时，200ms 节流发射，按 RSSI 降序，取消时自动停止扫描
+- 重连：每轮等待退避延迟后直连上次 MAC，15s 内未就绪视为失败，最多 10 次
+- 用户主动断开后不会自动重连
+- 左右反转（`swapLeftRight`）在仓库层对告警左右交换，适配雷达安装方向
+
+## 8. 悬浮窗设计
+
+### 8.1 样式（4 种）
+
+| 样式 | 名称 | 默认/安全 | 告警 |
+|------|------|-----------|------|
+| LightBar | 光带（默认） | 全透明 | 黄/橙/红渐变 + Critical 脉冲 |
+| Dot | 圆点 | 灰 | 黄/橙/红 + 脉冲 |
+| Bar | 竖条 | 灰 | 黄/橙/红 + 脉冲 |
+| Arrow | 箭头 | 灰 | 黄/橙/红 + 脉冲 |
+
+所有图标样式带深色描边，提升明亮地图背景下的辨识度。
+断线时各样式统一切换为灰色慢速呼吸（光带不再透明）。
+
+### 8.2 属性
 
 | 属性 | 默认值 | 范围 |
 |------|--------|------|
-| 大小 | 中 (20dp) | 12/20/28dp |
-| 透明度 | 60% | 20%-100% |
-| 位置 | 默认（横竖屏自适应） | 用户拖拽保存 |
+| 大小 | 中 40dp | 小 28 / 中 40 / 大 56dp |
+| 透明度 | 60% | 35%-100%（下限 35%，保证户外可见） |
+| 光带位置 | 左右边缘 | 左右边缘 / 上下边缘 |
+| 左右反转 | 关 | 开/关 |
 
----
+### 8.3 光带（LightBar）
 
-## 界面设计
+- 厚度 40dp；左右边缘模式贴左右两侧纵向渐变（左条从左实到右 20% 底色，右条相反）；上下边缘模式贴上下两侧横向渐变（上条从上实到下 20% 底色，下条相反）
+- 告警时渐变不到全透明：内侧保留 20% 恒定底色（不随脉冲缩放），整条保持可见；安全态仍全透明
+- Safe 全透明（不遮挡）；Warning/Alert 常亮；Critical 500ms 脉冲
+- Critical 脉冲暗相位下限 0.5，与 20% 底色保持明显对比
+- 断线时显示灰色呼吸，不再全透明
+- 灯带框架使用系统最大窗口区域定位（Android 11+），自动避开不透明状态栏/导航栏、适配透明栏与挖孔，不同手机上均贴屏幕边缘
+- 光带不可触摸（`FLAG_NOT_TOUCHABLE`），不拦截导航手势
 
-### 标签一：状态（Dashboard）
+### 8.4 位置与拖拽（Dot/Bar/Arrow）
 
-```
-┌──────────────────────────────────┐
-│            MotoBSD               │
-│           ⚡ 已连接              │   ← 绿色 / 灰色（断开）
-│                                  │
-│      ┌────────┐  ┌────────┐     │
-│      │   ●    │  │   ●    │     │   ← 大号圆点
-│      │  左    │  │  右    │     │   ← 标签
-│      │  安全  │  │ Critical│     │   ← 文字 + 底色
-│      │        │  │  ⚡     │     │   ← Critical 显示闪电图标
-│      └────────┘  └────────┘     │
-│                                  │
-│  ┌────────────────────────────┐  │
-│  │ 电池            82%        │  │
-│  │ ████████████████████░░░░░ │  │   ← 渐变：绿→黄→红
-│  │ 3.85V                     │  │
-│  │ 🌡 25°C        USB ✓     │  │
-│  │ 雷达 ● 开启              │  │
-│  └────────────────────────────┘  │
-│                                  │
-│  [ 收起后台 ]                    │   ← 启动 OverlayService
-└──────────────────────────────────┘
-```
+- 默认位置：图标贴左右边缘、垂直居中（避开状态栏/导航栏）
+- 拖动：按下显示"左/右"标签（平时不显示）→ 跟随手指 → 松手吸附最近边缘
+- 防重叠：两圆点中心距 < 3×size（像素）时自动弹回默认位置 + Toast 提示
+- 持久化：保存像素坐标 + 当时屏幕尺寸；旋转/横竖屏切换时按新旧屏幕尺寸**比例换算**
+- 交互：单击不响应（避免导航中误触）；双击打开 MainActivity；长按弹出状态菜单（左右两侧级别 + 电量）
+- 样式切换时同步触摸标志与当前告警级别（0.5.0 修复）
 
-盲区卡片状态：
+### 8.5 权限处理
 
-| 级别 | 底色 | 圆点颜色 | 文字 |
-|------|------|---------|------|
-| NoAlert (0) | 灰 #F5F5F5 | 灰 #9E9E9E | 安全 |
-| Warning (1) | 黄 #FFF8E1 | 黄 #FFC107 | Warning |
-| Critical (2) | 红 #FFEBEE | 红 #F44336 | Critical ⚡ |
+- OverlayService 启动时检查 `Settings.canDrawOverlays`；未授权不创建窗口，前台通知提示"需要悬浮窗权限"，不崩溃
+- MainActivity 每次进程只提示一次跳转悬浮窗设置页（0.5.0 修复反复弹跳）
+- 「图标设置」页提供「悬浮窗指示」开关；偏好持久化且**默认开启**——首次进入自动启动，手动关闭后保持关闭
 
-### 标签二：设备（Device）
+## 9. 界面设计
+
+### 9.1 状态（Dashboard）
 
 ```
 ┌──────────────────────────────────┐
-│  设备信息                        │
-│  ─────────────────────────────── │
-│  产品型号      MS60-3015S80M4    │
-│  序列号        00000001          │
-│  硬件版本      1.0.0             │
-│  固件版本      1.1.2             │
-│                                  │
-│  固件升级                        │
-│  ┌────────────────────────────┐  │
-│  │ 📦  选择升级包             │  │
-│  │     当前: v1.1.2           │  │
-│  └────────────────────────────┘  │
-│                                  │
-│  雷达设置                        │
-│  ┌────────────────────────────┐  │
-│  │ 雷达电源      [ ●●● 开启 ]│  │
-│  └────────────────────────────┘  │
-│                                  │
-│  系统                            │
-│  ┌────────────────────────────┐  │
-│  │ ⟳  重启设备                │  │
-│  │ ⚠  恢复出厂设置            │  │
-│  └────────────────────────────┘  │
+│ MotoBSD                          │
+│ ⚡ 已连接（绿=就绪/蓝=忙碌/红=失败/灰=断开）│
+│ ┌────────┐  ┌────────┐          │
+│ │   ●    │  │   ●    │          │
+│ │  左    │  │  右    │          │
+│ │ 安全   │  │ 危险    │          │
+│ └────────┘  └────────┘          │
+│ 最近目标                         │
+│ 左侧 · 3.0m · 20.0° · 6m/s 靠近  │
+│ ┌────────────────────────────┐  │
+│ │ 82%  3.85V                 │  │
+│ │ ████████░░░░（<20红/<50黄/else蓝）│
+│ │ 25°C  USB  雷达 ●           │  │
+│ └────────────────────────────┘  │
+│ [ 扫描设备 / 断开连接 ]          │
+│ [ 最小化到后台 ]                 │
 └──────────────────────────────────┘
 ```
 
-DFU 升级流程：
+- 连接徽标文案：已连接/扫描中/连接中/重连中(第N次)/连接失败/未连接
+- 忙碌态（扫描/连接/重连）用蓝色，避免与告警黄混淆
+- 盲区卡片：按级别色叠加的底色 + 圆点 + 闪电图标（Alert/Critical）+ 非安全时显示最近目标距离/速度
+- 最近目标卡片：按距离排序取前 2 个，显示侧/距离/角度(°)/速度/靠近方向，颜色跟随该侧有无目标状态
+- 电量卡：百分比 + 电压 + 温度 + USB + 雷达在线状态
+- 底部按钮：未连接→"扫描设备"跳设备列表；错误→"重试扫描"；已连接→红色"断开连接"；其余禁用
+- 「最小化到后台」：启动 BleService + OverlayService 并 moveTaskToBack
+
+### 9.2 设备（Device）
 
 ```
-正常流程：
-  选 zip → 确认版本 → 写 dfu_trigger 0x01
-  → 设备重启为 DfuTarg → Nordic DFU 传输
-  → 设备再次重启 → 重新搜到 MotoBSD → 提示升级完成
-
-中断恢复：
-  传输中断（蓝牙断/走远/来电/切App）
-  → 设备停留在 DfuTarg 模式（不会自动退出）
-  → App 检测到 DFU 中断 → 保存进度
-  → 弹窗："升级中断，设备处于升级模式。是否继续？"
-     [继续升级] → 重新扫描 DfuTarg → 续传
-     [稍后再说] → 通知栏持续提醒："设备等待升级"
-                   → 下次打开 App 自动提示续传
+设备信息       产品型号 / 序列号 / 硬件版本 / 固件版本 / 制造商
+设备名称       当前名称 / 刷新 / 修改（≤20 字节，重连后生效）
+固件升级       当前版本 + [选择升级包]（zip → Nordic DFU）
+雷达设置       雷达电源 [开关]（绑定 radarOnline 状态）
+系统           [重启设备]（确认对话框）
 ```
 
-DFU 状态机：
+- 设备名称：写入后延时回读，提示"名称已更新（重连后生效）"
+- DFU：文件选择（application/zip）→ `DfuServiceInitiator`（buttonless、packet receipt 8、重试 5）
+
+### 9.3 图标设置（Overlay）
 
 ```
-选择文件 → 写入 dfu_trigger → 等待设备重启
-    → 扫描 DfuTarg (30s 超时)
-       ├─ 发现 → 发送固件 → 完成 → 扫描 MotoBSD
-       │                                ├─ 发现 → 升级成功
-       │                                └─ 超时 → 提示用户手动重启设备
-       ├─ 超时 → 提示手动进入 DFU 模式
-       └─ 中断 → 保存状态 → 通知提醒 → 等待用户操作
+图标样式        4 种卡片选择器（选中蓝色描边）
+图标大小        小 / 中 / 大
+透明度          Slider 35%-100%
+测试告警        左/右独立「切换」循环 安全→警告→警惕→危险，实时驱动浮窗与声音
+声音设置        音量 0-100、左频/右频 100-2000Hz、试听左/右/左急/右急
+高级            左右反转 [开关]
+[重置为默认位置]（立即生效，0.5.0 修复）
+[光带位置：左右边缘/上下边缘 切换]
+[悬浮窗指示：开/关]（默认开；关闭后需手动开启；无权限时提示先到系统设置授权）
 ```
 
-### 标签三：图标设置（Overlay）
+测试告警会临时覆盖连接状态（断线呼吸），便于无设备时验证显示效果；「重置为安全」后恢复。
 
-```
-┌──────────────────────────────────┐
-│  悬浮图标设置                     │
-│  ─────────────────────────────── │
-│                                  │
-│  图标样式                        │
-│  ┌──────┐ ┌──────┐ ┌──────┐    │
-│  │  ●   │ │  ▎   │ │  ←→  │    │
-│  │ 圆点 │ │ 竖条 │ │ 箭头 │    │
-│  └──────┘ └──────┘ └──────┘    │
-│    (选中边框高亮)                │
-│                                  │
-│  图标大小                        │
-│  ○  ────●───  ○                │
-│  小   (中)   大                  │
-│                                  │
-│  透明度                          │
-│  ▓ ─────●─── ░                  │
-│  (60%)                           │
-│                                  │
-│  预览                            │
-│  ┌────────────────────────────┐  │
-│  │                            │  │
-│  │   ●                 ●     │  │  ← 实时反映当前设置
-│  │                            │  │
-│  └────────────────────────────┘  │
-│                                  │
-│  [ 重置为默认位置 ]             │
-└──────────────────────────────────┘
-```
+### 9.4 设备列表（扫描页）
 
----
+- 扫描/停止切换，显示发现数量；名称过滤框；MotoBSD/BSD 设备置顶
+- 每项：名称（MotoBSD 加标记）、MAC、RSSI 颜色（≥-60 绿 / ≥-80 黄 / 其余红）
+- "已连接"标记按 MAC 精确匹配当前连接设备，不会整列表误标
+- 手动输入 MAC 连接；连接成功自动返回；蓝牙未开显示引导
 
-## 通知设计
+### 9.5 首次引导（Onboarding）
 
-### 持久通知（Foreground Service 必须）
+4 屏纯展示：欢迎 / 蓝牙连接 / 悬浮指示 / 告警通知。完成后写 `onboarding_complete`。
 
-```
-┌──────────────────────────────────┐
-│ MotoBSD                       ▼  │
-│ 左: 安全  |  右: Critical       │
-│ 电量 82%   3.85V                 │
-└──────────────────────────────────┘
-```
+> 已知缺口：当前引导页**不实际请求权限**，运行时权限由 MainActivity.onResume 兜底请求。
 
-- 展开显示盲区详情 + 最近目标
-- 点击通知 → 打开 MainActivity
-- 通知通道：IMPORTANCE_LOW（不发出声音）
+## 10. 通知设计
 
-### 告警通知（Critical 时触发）
+### 10.1 持久通知（BleService）
 
-```
-┌──────────────────────────────────┐
-│ ⚠ 右盲区告警！                   │
-│ 目标: 1m  20°  6m/s (快速靠近)   │
-└──────────────────────────────────┘
-```
+- 通道 `motobsd_ble`（IMPORTANCE_LOW，无声音）
+- 标题按连接状态：⚡已连接 / ⟳扫描中 / ⟳连接中 / ⟳重连中 / ✗连接失败 / ○未连接
+- 正文（已连接）：`左:安全 右:危险`
+- 点击打开 MainActivity；用户断开连接后服务自动停止
 
-- `IMPORTANCE_HIGH` + `AudioAttributes.USAGE_ALARM` → 绕过勿扰模式
-- 振动 + 急促短音
+### 10.2 告警通知（Critical）
 
----
+- 通道 `motobsd_alert`（IMPORTANCE_HIGH + 震动）
+- 仅 Critical 触发；同侧 30s 防抖；震动 500ms；固定文案"有车辆靠近，请注意安全"；自动取消
 
-## BLE 连接策略
+### 10.3 浮窗通知（OverlayService）
 
-```
-启动 → 尝试连接已配对的 MAC
-       ├─ 成功 → 订阅通知 → 持久连接
-       ├─ 失败 → 扫描 "MotoBSD"（10s 超时）
-       │         ├─ 发现 → 连接 + 保存 MAC
-       │         └─ 未发现 → 等待 5s → 重试（最多 3 次）
-       └─ 3 次失败 → 通知用户检查设备电源
+- 通道复用 `motobsd_ble`，PRIORITY_MIN；文案"盲区指示运行中"；无权限时提示开启
 
-连接断开 → 自动重连（指数退避: 1s→2s→4s→8s→...→30s max）
-```
+> 已知缺口：持久通知不含电量/电压，告警通知不含目标详情（距离/角度/速度）。
 
-### BLE 连接状态机
+## 11. 声音设计（SoundManager）
 
-```
-                    ┌─────────┐
-                    │ 空闲     │ ← App 启动 / 无已知设备
-                    └────┬────┘
-                         ↓
-                    ┌─────────┐
-                    │ 扫描中   │ ← 10s 超时
-                    └────┬────┘
-                  发现 /   \ 超时
-                   ↓        ↓
-              ┌─────────┐  ┌──────────┐
-              │ 连接中   │  │ 扫描失败  │ → 5s 后重试（×3）
-              └────┬────┘  └──────────┘
-             成功 /  \ 失败        3 次全败 → 通知用户
-              ↓      ↓
-         ┌────────┐ ┌──────────┐
-         │ 订阅中  │ │ 连接失败  │ → 回退到扫描
-         └───┬────┘ └──────────┘
-             ↓
-        ┌─────────┐
-        │ 已就绪   │ ← BLE 数据流通
-        └────┬────┘
-             ↓ 断开
-        ┌─────────┐
-        │ 重连中   │ ← 指数退避: 1s→2s→4s→8s→16s→30s
-        └────┬────┘
-        成功 /  \ 30s 超时 → 回退到扫描
-         ↓      ↓
-      已就绪   扫描失败
-```
+- AudioTrack 实时生成三角波 PCM，`USAGE_ALARM`（告警用途）
+- Warning：3 声 × 100ms，间隔 500ms；循环间隔 3000ms
+- Critical：5 声 × 80ms，间隔 100ms；循环间隔 1500ms
+- 默认频率：左 1000Hz / 右 400Hz；Critical 左频 ×1.2（≤2500Hz）
+- 优先级：Critical > Warning，左 > 右；全部安全时停止
+- 音量/左右频率持久化到 DataStore，图标设置页可调
 
-```kotlin
-enum class ConnectionState {
-    Idle,           // 未启动连接
-    Scanning,       // 扫描中
-    Connecting,     // 正在连接
-    Subscribing,    // 连接成功，正在订阅特征值
-    Ready,          // 就绪
-    Reconnecting,   // 断线重连中
-    Failed,         // 失败（需用户干预）
-}
-```
+## 12. 权限清单
 
-UI 和通知都绑定此状态：
-- Scanning/Connecting/Subscribing → UI 显示加载动画
-- Ready → UI 正常显示
-- Reconnecting → UI 显示重连进度（第 N 次，间隔 Xs）
-- Failed → 通知用户检查设备
+| 权限 | 用途 | 运行时请求 |
+|------|------|-----------|
+| BLUETOOTH / BLUETOOTH_ADMIN | 旧版蓝牙（minSdk 26 兼容） | 否 |
+| BLUETOOTH_SCAN / BLUETOOTH_CONNECT | Android 12+ BLE | onResume 一次性请求 |
+| ACCESS_FINE_LOCATION | BLE 扫描必需 | onResume 一次性请求 |
+| POST_NOTIFICATIONS | Android 13+ 通知 | onResume 一次性请求 |
+| SYSTEM_ALERT_WINDOW | 悬浮窗 | 每进程提示一次（跳系统设置） |
+| FOREGROUND_SERVICE / CONNECTED_DEVICE / SPECIAL_USE | 前台服务 | 否 |
+| USE_EXACT_ALARM | 预留（当前未使用） | 否 |
+| VIBRATE | 告警震动 | 否 |
 
----
+服务声明：BleService `connectedDevice`；OverlayService `specialUse`；DfuService `connectedDevice`。
+Activity 声明 `configChanges`（orientation/screenSize/screenLayout/smallestScreenSize）。
 
-## Android 权限
+## 13. 数据持久化（DataStore：`motobsd_settings`）
 
-```xml
-<!-- AndroidManifest.xml -->
-<uses-permission android:name="android.permission.BLUETOOTH" />
-<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-<uses-permission android:name="android.permission.BLUETOOTH_SCAN" />     <!-- Android 12+ -->
-<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />  <!-- Android 12+ -->
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" /> <!-- BLE 扫描必需 -->
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />  <!-- 悬浮窗 -->
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />   <!-- Android 13+ -->
-<uses-permission android:name="android.permission.USE_EXACT_ALARM" />      <!-- Critical 告警 -->
+| Key | 内容 |
+|-----|------|
+| last_mac | 上次连接的 MAC |
+| onboarding_complete | 引导完成标记 |
+| overlay_style / overlay_size / overlay_alpha | 样式 / 大小 / 透明度 |
+| overlay_swap / overlay_orientation | 左右反转 / 光带方向 |
+| overlay_enabled | 悬浮窗开关偏好（默认开启） |
+| left_x / left_y / right_x / right_y | 图标位置（像素） |
+| left_screen_w/h / right_screen_w/h | 保存位置时的屏幕尺寸（旋转比例换算用） |
+| sound_volume / sound_left_freq / sound_right_freq | 声音设置 |
+| style_migrated_v1 | 旧版 Dot → LightBar 默认值迁移标记 |
 
-<!-- Android 14+ foreground service type 必须声明 -->
-<!-- connectedDevice: 与附近设备（BLE）持续通信 — 符合条件 -->
-<!-- 如果 Android 14+ 未正确声明，Service 会在 6 小时后被系统杀死 -->
+配置变更通过 `OverlayRepository.configFlow`（内存 StateFlow）实时直通 OverlayService，不经过 DataStore 中转。
 
-<!-- 服务声明 -->
-<service android:name=".service.BleService"
-    android:foregroundServiceType="connectedDevice"
-    android:exported="false" />
-<service android:name=".service.OverlayService"
-    android:exported="false" />
-```
+## 14. 已知缺口（半成品状态）
 
-### Android 14+ 注意事项
+- **DFU**：仅选包 + Nordic 传输，无进度 UI、无中断恢复流程
+- **通知**：持久通知无电量/电压，告警通知无目标详情，文案固定
+- **Onboarding**：4 屏纯展示，无实际权限请求；无"连接设备"步骤
+- **折叠屏**：androidx.window 已引入，避让折叠区域未实现
+- **设备页**：无"恢复出厂设置"
+- **声音**：无多目标/连续告警去重之外的策略；循环间隔固定
+- **代码遗留**：`OverlayConfig` 的 fraction 字段未使用（位置按像素+屏幕尺寸存储）；`DeviceStatus.batteryRaw` 未使用；`USE_EXACT_ALARM` 权限未使用
+- **显示细节**：断线呼吸状态目前仅限悬浮窗，Dashboard 卡片无独立断线态；告警仅按"有无目标"两级显示，无距离/速度阈值决策
 
-- `foregroundServiceType="connectedDevice"` 必须显式声明，否则 6 小时后被系统杀死
-- `BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT` 是运行时权限，需动态申请
-- `POST_NOTIFICATIONS` (Android 13+) 首次启动时弹窗，拒绝后通知功能不可用
-
-### 厂商 ROM 兼容性
-
-`SYSTEM_ALERT_WINDOW` 在以下 ROM 上默认禁止，需引导用户手动开启：
-
-| ROM | 设置路径 |
-|-----|---------|
-| MIUI (小米) | 设置 → 应用 → MotoBSD → 权限 → 显示悬浮窗 → 始终允许 |
-| ColorOS (OPPO) | 手机管家 → 权限管理 → 悬浮窗管理 → MotoBSD → 允许 |
-| EMUI (华为) | 设置 → 应用 → 权限 → 悬浮窗 → MotoBSD → 允许 |
-| OneUI (三星) | 设置 → 应用程序 → MotoBSD → 在其他应用上层显示 → 开启 |
-| 原生 Android | 设置 → 应用 → 特殊应用权限 → 在其他应用上层显示 → MotoBSD → 允许 |
-
-**处理方案**：
-
-```kotlin
-fun checkOverlayPermission(context: Context): Boolean {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        Settings.canDrawOverlays(context)
-    } else true
-}
-
-fun requestOverlayPermission(context: Context) {
-    // 跳转到系统设置页（ACTION_MANAGE_OVERLAY_PERMISSION）
-    // + 弹窗教学截图引导（不同 ROM 路径不同）
-    // + 注册 ActivityResult 回调检测授权结果
-}
-```
-
-如果用户拒绝悬浮窗权限，不影响 BLE 连接和通知功能，仅悬浮图标不可用。
-
----
-
-## 首次引导流程（Onboarding）
-
-首次安装 App 后，分步引导。6 项权限分 3 组申请，避免一次性弹出太多对话框：
-
-```
-第 1 屏：欢迎
-  ┌──────────────────────────┐
-  │    🏍️  MotoBSD           │
-  │    摩托车盲区检测助手     │
-  │                          │
-  │  骑行中屏幕显示盲区指示   │
-  │  连接 MotoBSD 设备开始   │
-  │                          │
-  │      [ 开始设置 ]        │
-  └──────────────────────────┘
-
-第 2 屏：蓝牙权限
-  "MotoBSD 通过蓝牙与设备通信"
-  → 请求 BLUETOOTH_SCAN + BLUETOOTH_CONNECT + 定位权限
-  → 打开蓝牙
-
-第 3 屏：悬浮窗权限
-  "骑行时在屏幕边缘显示盲区指示"
-  → 请求 SYSTEM_ALERT_WINDOW
-  → 跳转系统设置页
-  → 示范拖拽操作
-
-第 4 屏：通知权限
-  "告警时发送通知，绕过勿扰模式"
-  → 请求 POST_NOTIFICATIONS
-  → 示范通知样式
-
-第 5 屏：连接设备
-  "搜索附近的 MotoBSD 设备"
-  → 自动开始扫描
-  → 发现设备 → 连接
-  → 连接成功 → 完成引导
-```
-
-引导完成后的状态：
-- `SharedPreferences: onboarding_complete = true`（下次启动跳过引导）
-- 自动连接已配对设备
-- 若用户跳过连接，可在主界面手动触发
-
----
-
-## 边缘情况处理
-
-### 横竖屏 / 折叠屏切换
-
-```
-横竖屏旋转 / 折叠屏展开折叠
-  → OverlayService 检测 onConfigurationChanged()
-  → 如果用户已自定义位置 → 按比例映射到新屏幕坐标系
-  → 如果使用默认位置 → 重新计算默认位置
-  → 图标平滑过渡（animateTo）
-```
-
-折叠屏额外处理：
-- `Jetpack WindowManager` 库获取 `FoldingFeature` 状态
-- 折叠状态 → 图标自动避开折叠区域
-- 展开状态 → 恢复大屏默认位置
-
-### 电量优化（扫描 vs 直连）
-
-| 场景 | 策略 | 功耗 |
-|------|------|------|
-| 有已配对 MAC | 直接 `connectGatt()`，不扫描 | 低 |
-| 无配对 + 首次连接 | 扫描 10s | 中 |
-| 断线重连 | 优先直连，失败后扫描 5s | 中 |
-| 后台维持连接 | 降低 BLE 连接参数（增大 interval: 30ms→50ms） | 低 |
-
-Android BLE 扫描白名单限制（Android 7+）：
-- 30 秒内最多开始 5 次扫描
-- 后台扫描频率受限（约 30 分钟 1 次）
-- **我们的策略天然适配**：有配对 MAC 不扫描，只在首次/失败时扫描
-
-### 告警通知防抖
-
-连续 Critical 告警不重复通知：
-```kotlin
-// 同一侧 Critical 告警，30s 内只发一次通知
-private var lastNotifyTime: MutableMap<Side, Long>
-
-fun shouldNotify(side: Side): Boolean {
-    val last = lastNotifyTime[side] ?: 0
-    val now = System.currentTimeMillis()
-    return (now - last) > 30_000
-}
-
-fun onCriticalAlert(side: Side) {
-    if (shouldNotify(side)) {
-        sendNotification(side)
-        vibrate()
-        lastNotifyTime[side] = System.currentTimeMillis()
-    }
-}
-```
-
-但悬浮窗图标**不受防抖影响**——颜色实时变化，闪烁不限制。
-
-### 连接状态栏更新
-
-即使用户不看 App，通知栏的持久通知也实时更新：
-
-```
-连接就绪：  "MotoBSD · 左:安全 右:安全 · 82%"
-告警中：    "⚠ MotoBSD · 左:安全 右:Critical · 82%"
-重连中：    "⟳ MotoBSD · 重连中 (第 3 次) · 82%"
-扫描中：    "⟳ MotoBSD · 正在搜索 · ??%"
-连接失败：  "✗ MotoBSD · 连接失败 · 点击重试"
-DFU 中断：  "⚠ MotoBSD · 设备等待升级 · 点击继续"
-```
-
----
-
-## 项目结构
+## 15. 项目结构
 
 ```
 moto-bsd-app/
-├── app/
-│   ├── build.gradle.kts
-│   └── src/main/
-│       ├── AndroidManifest.xml
-│       ├── java/com/motobsd/
-│       │   ├── App.kt                   # Application 类
-│       │   ├── MainActivity.kt          # 主 Activity（Compose）
-│       │   │
-│       │   ├── service/
-│       │   │   ├── BleService.kt        # 前台 Service：BLE 生命周期
-│       │   │   └── OverlayService.kt    # 悬浮窗 Service
-│       │   │
-│       │   ├── ble/
-│       │   │   ├── BleManager.kt        # BLE 扫描/连接/GATT 操作
-│       │   │   └── Protocol.kt          # 数据解析（字节 → 模型）
-│       │   │
-│       │   ├── overlay/
-│       │   │   ├── BsdIndicatorView.kt  # 悬浮窗 View（单侧）
-│       │   │   ├── OverlayWindow.kt     # 悬浮窗管理（位置/拖拽/保存）
-│       │   │   └── AlertAnimator.kt     # 告警动画（颜色渐变/闪烁）
-│       │   │
-│       │   ├── ui/
-│       │   │   ├── screens/
-│       │   │   │   ├── DashboardScreen.kt   # 标签一：状态
-│       │   │   │   ├── DeviceScreen.kt      # 标签二：设备/DFU
-│       │   │   │   └── OverlaySettingsScreen.kt # 标签三：图标设置
-│       │   │   ├── components/
-│       │   │   │   ├── BlindSpotCard.kt      # 盲区状态卡片
-│       │   │   │   ├── BatteryGauge.kt       # 电量进度条
-│       │   │   │   └── StyleSelector.kt      # 图标样式选择器
-│       │   │   └── theme/
-│       │   │       └── Theme.kt              # Material 3 主题（暗色）
-│       │   │
-│       │   └── model/
-│       │       ├── AlertState.kt             # 告警状态（left/right level）
-│       │       ├── ConnectionState.kt        # BLE 连接状态枚举
-│       │       ├── DeviceStatus.kt           # 设备状态（batt/temp/flags）
-│       │       ├── TargetObject.kt           # 单个目标数据
-│       │       └── OverlayStyle.kt           # 悬浮窗样式配置
-│       │   ├── ui/screens/
-│       │   │   └── OnboardingScreen.kt       # 首次引导（权限 + 连接教程）
-│       │
-│       └── res/
-│           ├── values/strings.xml
-│           └── drawable/                     # 图标资源
-│
-├── build.gradle.kts                          # 项目级构建
-├── settings.gradle.kts
-└── DESIGN.md                                 # 本文档
+├── app/build.gradle.kts            # Compose / Hilt / KSP / Nordic
+└── app/src/main/
+    ├── AndroidManifest.xml
+    ├── res/values/                 # strings / colors / themes
+    └── java/com/motobsd/
+        ├── App.kt                  # Application：通知通道创建
+        ├── MainActivity.kt         # 入口：引导门控 / 权限兜底 / DFU 选择
+        ├── ble/Protocol.kt         # UUID + 字节流解析
+        ├── model/                  # AlertLevel / DeviceStatus / TargetObject
+        │                           # / OverlayStyle / BleConnectionState
+        ├── data/
+        │   ├── ble/                # BleRepository / Impl / ConnectionManager / Scanner
+        │   ├── overlay/OverlayRepository.kt
+        │   └── settings/SettingsRepository.kt
+        ├── di/                     # DataModule / BleModule / OverlayModule
+        ├── service/                # BleService / OverlayService / DfuService
+        ├── overlay/                # OverlayWindow / BsdIndicatorView
+        │                           # / AlertAnimator / OverlayWindowHolder
+        ├── audio/SoundManager.kt   # AudioTrack 告警音
+        └── ui/
+            ├── navigation/NavGraph.kt
+            ├── dashboard/          # 状态页 + ViewModel
+            ├── device/             # 设备页 + ViewModel
+            ├── devicelist/         # 扫描列表页 + ViewModel
+            ├── overlay/            # 图标设置页 + ViewModel
+            ├── onboarding/         # 首次引导
+            ├── components/         # BlindSpotCard / BatteryGauge / StyleSelector
+            └── theme/Theme.kt
 ```
 
----
+## 16. 后续可扩展（未实现）
 
-## 开发阶段
-
-### 阶段一：BLE 链路（2 天）
-
-- [ ] 扫描 BLE 设备，过滤 "MotoBSD"
-- [ ] 连接 + 发现服务 + 订阅 notify
-- [ ] alert_status / target_details / device_status 解析
-- [ ] DIS 信息读取
-- **验证**：控制台打印原始数据 + 解析结果
-
-### 阶段二：主界面（1 天）
-
-- [ ] 底部导航三标签
-- [ ] DashboardScreen：盲区卡片 + 电量 + 状态
-- [ ] DeviceScreen：版本信息 + 雷达开关 + 复位按钮
-- [ ] OverlaySettingsScreen：样式/大小/透明度选择
-- **验证**：连接设备后 UI 实时更新
-
-### 阶段三：悬浮窗（2 天）
-
-- [ ] SYSTEM_ALERT_WINDOW 权限处理
-- [ ] BsdIndicatorView：圆点渲染 + 颜色变化
-- [ ] 拖拽 + 位置保存
-- [ ] 横竖屏自适应
-- [ ] 闪烁动画
-- **验证**：收起 App → 圆点浮在地图上 → 告警时变色
-
-### 阶段四：后台服务（1.5 天）
-
-- [ ] BleService 前台 Service
-- [ ] 持久通知
-- [ ] 自动重连
-- [ ] 告警通知（高优先级）
-- **验证**：锁屏后 BLE 不断，告警时收到通知
-
-### 阶段五：DFU 升级（1.5 天）
-
-- [ ] Nordic DFU 库集成
-- [ ] 文件选择器
-- [ ] dfu_trigger → 设备切换 → DFU 传输
-- [ ] 升级结果通知
-- **验证**：选 zip → 设备升级 → 重启 → 新版本号
-
-### 阶段六：打磨（1 天）
-
-- [ ] 首次使用引导（权限申请 + 连接教程）
-- [ ] 错误状态处理（蓝牙未开、权限拒绝、超时）
-- [ ] 真机路测
-
-| 阶段 | 新增任务 | 说明 |
-|------|---------|------|
-| 一 | 连接状态机 | ConnectionState 枚举 + 状态转换逻辑 |
-| 三 | 防重叠机制 | 拖拽松手时检测距离 + 自动弹开 |
-| 三 | 长按菜单 | 300ms 长按弹出快捷菜单 |
-| 四 | 告警防抖 | 同侧 30s 内不重复通知 |
-| 六 | 首次引导 | 4 屏引导 + 6 权限分步申请 |
-| 六 | 厂商 ROM 适配 | 6 种 ROM 悬浮窗开启路径 |
-| 六 | 折叠屏适配 | onConfigurationChanged + 避让折叠区域 |
-| 六 | DFU 中断恢复 | 状态保存 + 续传提示 |
-
-**总计约 12 天**（原 9 天 + 新增 3 天）
-
----
-
-## 为什么只做 Android
-
-### iOS 的本质障碍
-
-iOS 三条硬限制：
-
-1. **不允许跨 App UI 覆盖**：悬浮窗、屏幕叠加层在 iOS 完全被禁止（系统级安全策略，无例外、无绕行方案）
-2. **后台 App 随时被系统挂起**：iOS 允许后台 BLE，但系统基于内存/功耗策略随时杀死 App，不给任何通知
-3. **不存在 SYSTEM_ALERT_WINDOW 等价物**：Android 的悬浮窗权限在 iOS 完全没有对应功能
-
-骑车场景的要求是"高德地图导航中，屏幕边缘显示 BSD 告警指示"。iOS 上要实现这个，唯一的办法是自己做一个导航 App——那需要 1000 人年的工作量。
-
-### iOS 上存在的"折中方案"
-
-| 方案 | 导航中可见吗 | 说明 |
-|------|:--:|------|
-| Live Activity（灵动岛/锁屏） | ❌ | 锁屏时才看得到 |
-| 高优先级通知横幅 | ❌ | 2 秒消失 |
-| Critical Alert 声音 | ❌ | 无视觉 |
-| CarPlay | ❌ | 摩托车不支持 |
-
-**全部不行。放弃 iOS。**
-
----
-
-## 后续可扩展功能
-
-- [ ] 图标样式：由用户自定义上传图片
-- [ ] 自动启动：检测到 MotoBSD 设备 BLE 广播时自动连接（即使 App 未打开）
-- [ ] 骑行数据记录：里程、告警次数、告警位置（GPS）→ 骑行报告
-- [ ] 语音播报："左侧盲区有车辆靠近"
-- [ ] 多设备支持（一辆摩托车前后雷达）
+- [ ] DFU 进度显示与中断恢复续传
+- [ ] 通知栏电量/电压 + 告警目标详情
+- [ ] Onboarding 分步实际请求权限 + 连接设备
+- [ ] 折叠屏避让折叠区域
+- [ ] 骑行数据记录（里程、告警次数、GPS 位置）
+- [ ] 语音播报
+- [ ] 多设备支持

@@ -59,8 +59,8 @@ interface BleRepository {
     /** 触发 DFU 模式。 */
     fun triggerDfu(mode: Int = 0x01)
 
-    /** 读取设备名称（结果通过 [deviceName] StateFlow 获取） */
-    fun readDeviceName()
+    /** 读取设备名称并挂起直到完成（成功返回名称，失败返回 null）；结果同步到 [deviceName] */
+    suspend fun readDeviceName(): String?
 
     /** 写入设备名称（UTF-8，最长 20 字节） */
     fun writeDeviceName(name: String)

@@ -12,6 +12,8 @@ import com.motobsd.model.TargetObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import no.nordicsemi.android.ble.BleManager
 import no.nordicsemi.android.ble.data.Data
 import java.util.UUID
@@ -58,8 +60,8 @@ class BleConnectionManager(context: Context) : BleManager(context) {
     /** services invalidated */
     var onServicesInvalidated: (() -> Unit)? = null
 
-    /** 告警状态变化 */
-    var onAlertChanged: ((AlertLevel, AlertLevel) -> Unit)? = null
+    /** alert_status 变化：左右"有无目标"（0/1），告警等级由仓库层基于目标计算 */
+    var onAlertChanged: ((Boolean, Boolean) -> Unit)? = null
 
     /** 目标列表更新 */
     var onTargetDetails: ((List<TargetObject>) -> Unit)? = null
@@ -99,16 +101,21 @@ class BleConnectionManager(context: Context) : BleManager(context) {
         }
     }
 
-    /** 读取设备名称（结果通过 [onDeviceNameRead] 回调） */
-    fun readDeviceName() {
-        deviceNameChar?.let { c ->
-            readCharacteristic(c)
-                .with(no.nordicsemi.android.ble.callback.DataReceivedCallback { _, data ->
-                    val name = data.getStringValue(0) ?: ""
-                    onDeviceNameRead?.invoke(name)
-                })
-                .enqueue()
+    /** 读取设备名称并挂起直到完成（成功返回名称，失败返回 null）；结果同步到 [onDeviceNameRead] */
+    suspend fun readDeviceNameResult(): String? = suspendCancellableCoroutine { cont ->
+        val c = deviceNameChar
+        if (c == null) {
+            cont.resume(null)
+            return@suspendCancellableCoroutine
         }
+        readCharacteristic(c)
+            .with(no.nordicsemi.android.ble.callback.DataReceivedCallback { _, data ->
+                val name = data.getStringValue(0) ?: ""
+                onDeviceNameRead?.invoke(name)
+                if (cont.isActive) cont.resume(name)
+            })
+            .fail { _, _ -> if (cont.isActive) cont.resume(null) }
+            .enqueue()
     }
 
     /** 写入设备名称（UTF-8，最长 20 字节） */
@@ -176,6 +183,25 @@ class BleConnectionManager(context: Context) : BleManager(context) {
                 alertStatusChar?.let { enableNotifications(it).enqueue() }
                 targetDetailsChar?.let { enableNotifications(it).enqueue() }
                 deviceStatusChar?.let { enableNotifications(it).enqueue() }
+
+                // 主动读取初始值（协议为 read + notify，不能只依赖订阅后推送）
+                alertStatusChar?.let { c ->
+                    readCharacteristic(c).with(
+                        no.nordicsemi.android.ble.callback.DataReceivedCallback { _, data ->
+                            val (l, r) = Protocol.parseAlertStatus(data.value)
+                            onAlertChanged?.invoke(l, r)
+                        }
+                    ).enqueue()
+                }
+                deviceStatusChar?.let { c ->
+                    readCharacteristic(c).with(
+                        no.nordicsemi.android.ble.callback.DataReceivedCallback { _, data ->
+                            val status = Protocol.parseDeviceStatus(data.value)
+                            _deviceStatus.value = status
+                            onDeviceStatusChanged?.invoke(status)
+                        }
+                    ).enqueue()
+                }
 
                 // 读取 DIS 信息
                 readDisCharacters()

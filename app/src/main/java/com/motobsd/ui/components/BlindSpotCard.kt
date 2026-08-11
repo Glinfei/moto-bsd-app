@@ -26,11 +26,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.motobsd.model.AlertLevel
-import com.motobsd.ui.theme.CriticalBg
+import com.motobsd.ui.theme.AlertOrange
 import com.motobsd.ui.theme.CriticalRed
-import com.motobsd.ui.theme.SafeBg
 import com.motobsd.ui.theme.SafeGray
-import com.motobsd.ui.theme.WarningBg
 import com.motobsd.ui.theme.WarningYellow
 
 /**
@@ -46,10 +44,10 @@ fun BlindSpotCard(
 ) {
     val bgColor by animateColorAsState(
         when (level) {
-            AlertLevel.Safe -> SafeBg.copy(alpha = 0.15f)
-            AlertLevel.Warning -> WarningBg.copy(alpha = 0.25f)
-            AlertLevel.Alert -> WarningBg.copy(alpha = 0.4f)
-            AlertLevel.Critical -> CriticalBg.copy(alpha = 0.25f)
+            AlertLevel.Safe -> SafeGray.copy(alpha = 0.14f)
+            AlertLevel.Warning -> WarningYellow.copy(alpha = 0.20f)
+            AlertLevel.Alert -> AlertOrange.copy(alpha = 0.22f)
+            AlertLevel.Critical -> CriticalRed.copy(alpha = 0.26f)
         },
         label = "cardBg",
     )
@@ -57,7 +55,7 @@ fun BlindSpotCard(
         when (level) {
             AlertLevel.Safe -> SafeGray
             AlertLevel.Warning -> WarningYellow
-            AlertLevel.Alert -> WarningYellow
+            AlertLevel.Alert -> AlertOrange
             AlertLevel.Critical -> CriticalRed
         },
         label = "dotColor",

@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.IBinder
+import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.motobsd.data.ble.BleRepository
 import com.motobsd.data.overlay.OverlayRepository
@@ -34,33 +36,26 @@ class OverlayService : Service() {
 
     private lateinit var overlayWindow: OverlayWindow
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var windowShown = false
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
 
         // 前台通知（保证 Service 不被系统杀死，旋转事件可靠送达）
-        val pi = PendingIntent.getActivity(
-            this, 0, Intent(this, com.motobsd.MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        startForeground(2001, NotificationCompat.Builder(this, BleService.CHANNEL_BLE)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("MotoBSD 浮窗")
-            .setContentText("盲区指示运行中")
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setContentIntent(pi)
-            .build())
+        startForeground(2001, buildNotification(
+            if (canShowOverlay()) "盲区指示运行中" else "需要悬浮窗权限：请到系统设置开启后重试"
+        ))
 
         overlayWindow = OverlayWindow(this, overlayRepository)
         OverlayWindowHolder.window = overlayWindow
+        // 同步当前连接状态（断线时立即显示灰色呼吸，而非普通"安全"）
+        OverlayWindowHolder.updateConnectionState(
+            bleRepository.connectionState.value is com.motobsd.model.BleConnectionState.Ready
+        )
 
         // 加载初始配置并显示
-        scope.launch {
-            val config = overlayRepository.loadConfig()
-            overlayWindow.show(config)
-            syncSwap(config)
-        }
+        if (canShowOverlay()) scope.launch { showWindow() }
 
         // 实时监听配置变更（来自 UI 的任何修改）
         scope.launch {
@@ -73,24 +68,59 @@ class OverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_REFRESH -> overlayWindow.refresh()
+            ACTION_REFRESH -> if (canShowOverlay()) overlayWindow.refresh()
             ACTION_STOP -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 overlayWindow.hide()
+                windowShown = false
                 stopSelf()
             }
+            else -> if (canShowOverlay() && !windowShown) scope.launch { showWindow() }
         }
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // 旋转 / 折叠屏切换后重新读取屏幕尺寸，避免位置和光带错乱
+        if (canShowOverlay()) overlayWindow.refresh()
+    }
+
     override fun onDestroy() {
+        isRunning = false
         OverlayWindowHolder.window = null
         overlayWindow.hide()
+        windowShown = false
         scope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
+    }
+
+    private suspend fun showWindow() {
+        val config = overlayRepository.loadConfig()
+        overlayWindow.show(config)
+        syncSwap(config)
+        windowShown = true
+    }
+
+    private fun canShowOverlay(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+
+    private fun buildNotification(text: String): Notification {
+        val pi = PendingIntent.getActivity(
+            this, 0, Intent(this, com.motobsd.MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Builder(this, BleService.CHANNEL_BLE)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("MotoBSD 浮窗")
+            .setContentText(text)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setContentIntent(pi)
+            .build()
     }
 
     private fun syncSwap(config: com.motobsd.model.OverlayConfig) {
@@ -101,6 +131,10 @@ class OverlayService : Service() {
     companion object {
         const val ACTION_REFRESH = "com.motobsd.action.REFRESH_OVERLAY"
         const val ACTION_STOP = "com.motobsd.action.STOP_OVERLAY"
+
+        /** 当前是否运行中（供设置页开关显示状态） */
+        @Volatile
+        var isRunning: Boolean = false
 
         fun start(context: Context) {
             context.startService(Intent(context, OverlayService::class.java))

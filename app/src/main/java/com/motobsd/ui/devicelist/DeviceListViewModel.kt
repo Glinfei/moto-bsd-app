@@ -26,6 +26,8 @@ data class DeviceListUiState(
     val connectingMac: String? = null,
     /** 连接状态（用于判断连接结果） */
     val connectionState: BleConnectionState = BleConnectionState.Disconnected,
+    /** 当前已连接的 MAC（用于列表行精确显示"已连接"） */
+    val connectedMac: String? = null,
     /** 错误/提示消息 */
     val message: String? = null,
 )
@@ -41,6 +43,13 @@ class DeviceListViewModel @Inject constructor(
     private var scanJob: Job? = null
 
     init {
+        // 监听当前连接对象，供列表行判断"已连接"
+        viewModelScope.launch {
+            bleRepository.lastMac.collect { mac ->
+                _uiState.value = _uiState.value.copy(connectedMac = mac)
+            }
+        }
+
         // 监听连接状态变化，更新 connectingMac 和 message
         viewModelScope.launch {
             bleRepository.connectionState.collect { state ->

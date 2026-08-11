@@ -253,7 +253,8 @@ fun DeviceListScreen(
                         DeviceItem(
                             result = result,
                             isConnecting = uiState.connectingMac == result.device.address,
-                            isConnected = uiState.connectionState is BleConnectionState.Ready,
+                            isConnected = uiState.connectionState is BleConnectionState.Ready &&
+                                uiState.connectedMac == result.device.address,
                             onClick = {
                                 if (uiState.connectingMac == null) {
                                     viewModel.selectDevice(result.device.address)

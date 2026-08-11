@@ -69,9 +69,10 @@ fun DashboardScreen(
         // Connection badge
         val (stateText, stateColor) = when (val cs = uiState.connectionState) {
             is BleConnectionState.Ready -> "⚡ 已连接" to Color(0xFF4CAF50)
-            is BleConnectionState.Scanning -> "⟳ ${cs.label}" to Color(0xFFFFC107)
-            is BleConnectionState.Connecting -> "⟳ ${cs.label}" to Color(0xFFFFC107)
-            is BleConnectionState.Reconnecting -> "⟳ ${cs.label} (第${cs.attempt}次)" to Color(0xFFFFC107)
+            // 忙碌态用蓝色，避免与 Warning 黄色混淆
+            is BleConnectionState.Scanning -> "⟳ ${cs.label}" to MotoBsdBlue
+            is BleConnectionState.Connecting -> "⟳ ${cs.label}" to MotoBsdBlue
+            is BleConnectionState.Reconnecting -> "⟳ ${cs.label} (第${cs.attempt}次)" to MotoBsdBlue
             is BleConnectionState.Error -> "✗ ${cs.message}" to Color(0xFFF44336)
             is BleConnectionState.Disconnected -> "○ 未连接" to Color.Gray
         }
@@ -82,8 +83,8 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            val leftTarget = uiState.targets.filter { it.side == 0 }.minByOrNull { it.rangeDm }
-            val rightTarget = uiState.targets.filter { it.side == 1 }.minByOrNull { it.rangeDm }
+            val leftTarget = uiState.targets.filter { it.side == 0 }.minByOrNull { it.rangeM }
+            val rightTarget = uiState.targets.filter { it.side == 1 }.minByOrNull { it.rangeM }
             BlindSpotCard("左", uiState.alertLeft, Modifier.weight(1f),
                 nearestDistMeters = leftTarget?.rangeMeters, nearestVel = leftTarget?.velocity)
             BlindSpotCard("右", uiState.alertRight, Modifier.weight(1f),
@@ -104,19 +105,20 @@ fun DashboardScreen(
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.Gray,
                     )
-                    uiState.targets.sortedBy { it.rangeDm }.take(2).forEach { t ->
+                    uiState.targets.sortedBy { it.rangeM }.take(2).forEach { t ->
                         val sideLabel = if (t.side == 0) "左" else "右"
                         val approach = when {
                             t.velocity > 0 -> "靠近"
                             t.velocity < 0 -> "远离"
                             else -> ""
                         }
+                        // 无决策矩阵：颜色跟随该侧"有无目标"的当前显示状态
+                        val sideAlert = if (t.side == 0) uiState.alertLeft else uiState.alertRight
                         Text(
-                            text = "${sideLabel}侧 · ${t.rangeMeters}m · ${t.angle}° · ${t.velocity}m/s $approach",
+                            text = "${sideLabel}侧 · %.1fm · %d° · ${t.velocity}m/s $approach"
+                                .format(t.rangeMeters, t.angleDeg),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = when (t.threatLevel) {
-                                2 -> CriticalRed; 1 -> WarningYellow; else -> SafeGray
-                            },
+                            color = if (sideAlert == com.motobsd.model.AlertLevel.Safe) SafeGray else WarningYellow,
                         )
                     }
                 }
@@ -178,7 +180,7 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MotoBsdBlue),
         ) {
-            Text("收起后台")
+            Text("最小化到后台")
         }
     }
 }

@@ -35,11 +35,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.motobsd.model.LightBarOrientation
 import com.motobsd.model.OverlaySize
 import com.motobsd.ui.components.StyleSelector
+import com.motobsd.ui.theme.AlertOrange
 import com.motobsd.ui.theme.CriticalRed
 import com.motobsd.ui.theme.MotoBsdBlue
 import com.motobsd.ui.theme.SafeGray
@@ -52,11 +56,14 @@ fun OverlaySettingsScreen(
     viewModel: OverlayViewModel = hiltViewModel(),
 ) {
     val config by viewModel.config.collectAsStateWithLifecycle()
+    val overlayRunning by viewModel.overlayRunning.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // 进入页面自动启动浮窗（方便测试）
-    LaunchedEffect(Unit) {
-        com.motobsd.service.OverlayService.start(context)
+    // 悬浮窗默认开启：开关为开时自动启动（偏好持久化，关掉后不再自动弹）
+    LaunchedEffect(overlayRunning) {
+        if (overlayRunning) {
+            com.motobsd.service.OverlayService.start(context)
+        }
     }
 
     Column(
@@ -106,7 +113,7 @@ fun OverlaySettingsScreen(
         Slider(
             value = config.alpha.toFloat(),
             onValueChange = { viewModel.updateConfig(config.copy(alpha = it.toInt())) },
-            valueRange = 20f..100f,
+            valueRange = 35f..100f,
             steps = 0,
             colors = SliderDefaults.colors(
                 thumbColor = MaterialTheme.colorScheme.primary,
@@ -137,7 +144,7 @@ fun OverlaySettingsScreen(
                 val leftColor = when (testLeft) {
                     com.motobsd.model.AlertLevel.Safe -> SafeGray
                     com.motobsd.model.AlertLevel.Warning -> WarningYellow
-                    com.motobsd.model.AlertLevel.Alert -> WarningYellow
+                    com.motobsd.model.AlertLevel.Alert -> AlertOrange
                     com.motobsd.model.AlertLevel.Critical -> CriticalRed
                 }
                 Button(
@@ -151,7 +158,7 @@ fun OverlaySettingsScreen(
                 val rightColor = when (testRight) {
                     com.motobsd.model.AlertLevel.Safe -> SafeGray
                     com.motobsd.model.AlertLevel.Warning -> WarningYellow
-                    com.motobsd.model.AlertLevel.Alert -> WarningYellow
+                    com.motobsd.model.AlertLevel.Alert -> AlertOrange
                     com.motobsd.model.AlertLevel.Critical -> CriticalRed
                 }
                 Button(
@@ -313,20 +320,46 @@ fun OverlaySettingsScreen(
         ) {
             Text(
                 if (config.lightBarOrientation == LightBarOrientation.Vertical)
-                    "光带：竖屏（点击切横屏）"
+                    "光带位置：左右边缘（点击切上下边缘）"
                 else
-                    "光带：横屏（点击切竖屏）"
+                    "光带位置：上下边缘（点击切左右边缘）"
             )
         }
 
         Spacer(Modifier.height(8.dp))
 
-        Button(
-            onClick = { com.motobsd.service.OverlayService.stop(context) },
+        // ── 悬浮窗开关 ────────────────────────────────────
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("关闭浮窗")
+            Column {
+                Text("悬浮窗指示", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    if (overlayRunning) "当前显示中" else "当前已关闭",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SafeGray,
+                )
+            }
+            Switch(
+                checked = overlayRunning,
+                onCheckedChange = { on ->
+                    if (on) {
+                        val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                            Settings.canDrawOverlays(context)
+                        if (!hasPermission) {
+                            Toast.makeText(context, "请先在系统设置中开启悬浮窗权限", Toast.LENGTH_SHORT).show()
+                        } else {
+                            com.motobsd.service.OverlayService.start(context)
+                            viewModel.setOverlayRunning(true)
+                        }
+                    } else {
+                        com.motobsd.service.OverlayService.stop(context)
+                        viewModel.setOverlayRunning(false)
+                    }
+                },
+            )
         }
     }
 }

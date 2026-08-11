@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import javax.inject.Inject
 
@@ -71,7 +72,13 @@ class DeviceViewModel @Inject constructor(
 
     fun onRefreshName() {
         _nameMessage.value = "读取中..."
-        bleRepository.readDeviceName()
+        viewModelScope.launch {
+            val name = withTimeoutOrNull(4_000) { bleRepository.readDeviceName() }
+            _nameMessage.value = when {
+                name.isNullOrEmpty() -> "读取失败，请重试"
+                else -> "已刷新：$name"
+            }
+        }
     }
 
     fun onSaveName(newName: String) {
@@ -81,13 +88,17 @@ class DeviceViewModel @Inject constructor(
             return
         }
         _nameMessage.value = "写入中..."
-        bleRepository.writeDeviceName(trimmed)
         // 回读验证
         viewModelScope.launch {
+            bleRepository.writeDeviceName(trimmed)
             kotlinx.coroutines.delay(500)
-            bleRepository.readDeviceName()
+            val verified = withTimeoutOrNull(4_000) { bleRepository.readDeviceName() }
             kotlinx.coroutines.delay(500)
-            _nameMessage.value = "名称已更新为: $trimmed（重连后生效）"
+            _nameMessage.value = if (verified == trimmed) {
+                "名称已更新为: $trimmed（重连后生效）"
+            } else {
+                "名称已写入，回读不一致（重连后生效）"
+            }
         }
     }
 

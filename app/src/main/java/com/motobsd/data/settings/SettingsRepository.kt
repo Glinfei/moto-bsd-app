@@ -34,12 +34,17 @@ class SettingsRepository(
         val OVERLAY_ALPHA = intPreferencesKey("overlay_alpha")
         val OVERLAY_SWAP = booleanPreferencesKey("overlay_swap")
         val OVERLAY_ORIENTATION = intPreferencesKey("overlay_orientation")
+        val OVERLAY_ENABLED = booleanPreferencesKey("overlay_enabled")
 
         // Overlay position
         val LEFT_X = intPreferencesKey("left_x")
         val LEFT_Y = intPreferencesKey("left_y")
         val RIGHT_X = intPreferencesKey("right_x")
         val RIGHT_Y = intPreferencesKey("right_y")
+        val LEFT_SCREEN_W = intPreferencesKey("left_screen_w")
+        val LEFT_SCREEN_H = intPreferencesKey("left_screen_h")
+        val RIGHT_SCREEN_W = intPreferencesKey("right_screen_w")
+        val RIGHT_SCREEN_H = intPreferencesKey("right_screen_h")
 
         // Sound
         val SOUND_VOLUME = intPreferencesKey("sound_volume")
@@ -93,6 +98,12 @@ class SettingsRepository(
         dataStore.edit { it[Keys.OVERLAY_ORIENTATION] = ordinal }
     }
 
+    /** 悬浮窗是否开启（默认开启） */
+    suspend fun getOverlayEnabled(): Boolean = dataStore.data.first()[Keys.OVERLAY_ENABLED] ?: true
+    suspend fun setOverlayEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.OVERLAY_ENABLED] = enabled }
+    }
+
     // ── Overlay position ──────────────────────────────────
 
     suspend fun getLeftX(): Int? = dataStore.data.first()[Keys.LEFT_X]
@@ -104,12 +115,30 @@ class SettingsRepository(
     suspend fun getRightY(): Int? = dataStore.data.first()[Keys.RIGHT_Y]
     suspend fun setRightY(y: Int) { dataStore.edit { it[Keys.RIGHT_Y] = y } }
 
+    suspend fun getLeftScreenW(): Int = dataStore.data.first()[Keys.LEFT_SCREEN_W] ?: 0
+    suspend fun setLeftScreenW(w: Int) { dataStore.edit { it[Keys.LEFT_SCREEN_W] = w } }
+    suspend fun getLeftScreenH(): Int = dataStore.data.first()[Keys.LEFT_SCREEN_H] ?: 0
+    suspend fun setLeftScreenH(h: Int) { dataStore.edit { it[Keys.LEFT_SCREEN_H] = h } }
+    suspend fun getRightScreenW(): Int = dataStore.data.first()[Keys.RIGHT_SCREEN_W] ?: 0
+    suspend fun setRightScreenW(w: Int) { dataStore.edit { it[Keys.RIGHT_SCREEN_W] = w } }
+    suspend fun getRightScreenH(): Int = dataStore.data.first()[Keys.RIGHT_SCREEN_H] ?: 0
+    suspend fun setRightScreenH(h: Int) { dataStore.edit { it[Keys.RIGHT_SCREEN_H] = h } }
+
     suspend fun clearPositions() {
         dataStore.edit {
             it.remove(Keys.LEFT_X)
             it.remove(Keys.LEFT_Y)
             it.remove(Keys.RIGHT_X)
             it.remove(Keys.RIGHT_Y)
+        }
+    }
+
+    suspend fun clearScreenDims() {
+        dataStore.edit {
+            it.remove(Keys.LEFT_SCREEN_W)
+            it.remove(Keys.LEFT_SCREEN_H)
+            it.remove(Keys.RIGHT_SCREEN_W)
+            it.remove(Keys.RIGHT_SCREEN_H)
         }
     }
 

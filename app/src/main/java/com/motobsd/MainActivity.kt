@@ -31,6 +31,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var settingsRepository: SettingsRepository
 
     private var onboardingComplete = false
+    /** 本次进程内是否已引导过悬浮窗权限，避免每次 onResume 都强制跳转系统设置页 */
+    private var overlayPermissionPrompted = false
 
     // DFU file picker
     private val dfuFilePicker = registerForActivityResult(
@@ -99,8 +101,11 @@ class MainActivity : ComponentActivity() {
             requestPermissions(missing.toTypedArray(), 100)
         }
 
-        // Check overlay permission
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+        // Check overlay permission（仅提示一次，拒绝后不再反复打断）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            !Settings.canDrawOverlays(this) && !overlayPermissionPrompted
+        ) {
+            overlayPermissionPrompted = true
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName"),

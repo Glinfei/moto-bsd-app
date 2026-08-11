@@ -27,8 +27,8 @@ enum class OverlaySize(val label: String, val dp: Float) {
  * - [Horizontal] 横屏布局 —— 光带贴屏幕上下边缘、横向横条。
  */
 enum class LightBarOrientation(val label: String) {
-    Vertical("竖屏"),
-    Horizontal("横屏"),
+    Vertical("左右边缘"),
+    Horizontal("上下边缘"),
 }
 
 /**
