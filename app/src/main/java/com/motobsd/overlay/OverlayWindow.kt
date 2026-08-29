@@ -67,9 +67,17 @@ class OverlayWindow(
         isAttached = false
     }
 
-    /** 威胁度 0~1 直通灯带视图 */
+    /** 威胁度 0~1 直通灯带视图；[OverlayConfig.swapLeftRight] 仅镜像灯带显示 */
     fun setThreat(side: BsdIndicatorView.Side, threat: Float) {
-        when (side) {
+        val target = if (config.swapLeftRight) {
+            when (side) {
+                BsdIndicatorView.Side.Left -> BsdIndicatorView.Side.Right
+                BsdIndicatorView.Side.Right -> BsdIndicatorView.Side.Left
+            }
+        } else {
+            side
+        }
+        when (target) {
             BsdIndicatorView.Side.Left -> leftView.setThreat(threat)
             BsdIndicatorView.Side.Right -> rightView.setThreat(threat)
         }

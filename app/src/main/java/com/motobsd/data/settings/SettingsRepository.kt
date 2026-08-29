@@ -35,6 +35,9 @@ class SettingsRepository(
         val OVERLAY_ENABLED = booleanPreferencesKey("overlay_enabled")
         val RIDE_MODE = booleanPreferencesKey("ride_mode")
 
+        // Installation orientation
+        val RADAR_FACES_REAR = booleanPreferencesKey("radar_faces_rear")
+
         // Sound
         val SOUND_VOLUME = intPreferencesKey("sound_volume")
         val SOUND_LEFT_FREQ = intPreferencesKey("sound_left_freq")
@@ -85,6 +88,19 @@ class SettingsRepository(
     suspend fun getOverlayEnabled(): Boolean = dataStore.data.first()[Keys.OVERLAY_ENABLED] ?: true
     suspend fun setOverlayEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.OVERLAY_ENABLED] = enabled }
+    }
+
+    // ── Radar installation orientation ──────────────────
+
+    /** 模块是否朝后安装（默认 true；此时模块右侧=骑手左侧，需要左右反转） */
+    val radarFacesRear: Flow<Boolean> =
+        dataStore.data.map { it[Keys.RADAR_FACES_REAR] ?: true }
+
+    suspend fun getRadarFacesRear(): Boolean =
+        dataStore.data.first()[Keys.RADAR_FACES_REAR] ?: true
+
+    suspend fun setRadarFacesRear(rear: Boolean) {
+        dataStore.edit { it[Keys.RADAR_FACES_REAR] = rear }
     }
 
     // ── Ride mode ────────────────────────────────────────

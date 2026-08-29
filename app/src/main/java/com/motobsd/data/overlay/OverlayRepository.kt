@@ -30,6 +30,9 @@ class OverlayRepository(
     suspend fun loadRideModeEnabled(): Boolean = settings.getRideModeEnabled()
     suspend fun saveRideModeEnabled(enabled: Boolean) { settings.setRideModeEnabled(enabled) }
 
+    suspend fun loadRadarFacesRear(): Boolean = settings.getRadarFacesRear()
+    suspend fun saveRadarFacesRear(rear: Boolean) { settings.setRadarFacesRear(rear) }
+
     private val _configFlow = MutableStateFlow(OverlayConfig())
     /** 实时配置流 — OverlayService 观察此流自动应用变更 */
     val configFlow: StateFlow<OverlayConfig> = _configFlow.asStateFlow()

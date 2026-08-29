@@ -29,7 +29,7 @@ data class OverlayConfig(
     val size: OverlaySize = OverlaySize.Medium,
     /** 0-100，默认 60% */
     val alpha: Int = 60,
-    /** 左右反转（适配雷达安装方向） */
+    /** 悬浮窗灯带视觉左右反转（不影响告警语义） */
     val swapLeftRight: Boolean = false,
     /** 光带布局方向（用户手动切换） */
     val lightBarOrientation: LightBarOrientation = LightBarOrientation.Vertical,

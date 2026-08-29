@@ -3,6 +3,7 @@ package com.motobsd.data.ble
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanResult
 import android.content.Context
+import com.motobsd.ble.Protocol
 import com.motobsd.data.settings.SettingsRepository
 import com.motobsd.model.AlertLevel
 import com.motobsd.model.BleConnectionState
@@ -53,7 +54,10 @@ class BleRepositoryImpl @Inject constructor(
     private var connectionManager: BleConnectionManager? = null
     private var reconnectJob: Job? = null
     private var rssiJob: Job? = null
-    private var swapLeftRight: Boolean = false
+    /** 模块是否朝后安装；true=后装（默认），模块右侧=骑手左侧，App 需要镜像角度 */
+    @Volatile private var radarFacesRear: Boolean = true
+    /** 最近一帧原始目标（模块视角），用于安装朝向变化时重新映射，无需等下一帧 */
+    private var rawTargets: List<TargetObject> = emptyList()
     /** DFU 期间抑制自动重连，连接由 Nordic DFU 服务接管 */
     private var dfuInProgress: Boolean = false
     /** 手动发起连接/重连：重试次数少、失败提示明确；骑行中断线自动重连则长时间重试 */
@@ -71,7 +75,7 @@ class BleRepositoryImpl @Inject constructor(
     private val _threatState = MutableStateFlow(Pair(0f, 0f))
     override val threatState: StateFlow<Pair<Float, Float>> = _threatState.asStateFlow()
 
-    /** alert_status 的左右有无目标（威胁度下限，目标详情缺失时兜底） */
+    /** alert_status 的左右有无目标（已转换为骑手视角；仅作威胁度下限兜底） */
     private var leftPresent = false
     private var rightPresent = false
 
@@ -106,6 +110,14 @@ class BleRepositoryImpl @Inject constructor(
         scope.launch {
             settings.lastMac.collect { mac ->
                 _lastMac.value = mac
+            }
+        }
+
+        // 安装朝向变化时立即把当前原始目标重新映射到骑手视角
+        scope.launch {
+            settings.radarFacesRear.collect { rear ->
+                radarFacesRear = rear
+                remapTargetsToRider()
             }
         }
     }
@@ -158,6 +170,7 @@ class BleRepositoryImpl @Inject constructor(
         leftPresent = false
         rightPresent = false
         _targets.value = emptyList()
+        rawTargets = emptyList()
         targetRecordMap.clear()
         _targetRecords.value = emptyList()
         _disInfo.value = emptyMap()
@@ -209,11 +222,6 @@ class BleRepositoryImpl @Inject constructor(
         connectionManager?.writeDeviceName(name)
     }
 
-    /** 设置左右反转（由 OverlayService 或 Settings 同步） */
-    fun setSwapLeftRight(swap: Boolean) {
-        swapLeftRight = swap
-    }
-
     // ── ConnectionManager 创建 ────────────────────────────
 
     private fun createAndSetupConnectionManager(): BleConnectionManager {
@@ -229,22 +237,23 @@ class BleRepositoryImpl @Inject constructor(
                 handleGattDisconnect()
             }
 
-            // 固件只上报"有无目标"（0/1），不做等级决策：
-            // 有 → Warning，无 → Safe，直接驱动悬浮窗/声音/通知。
-            onAlertChanged = { leftPresent, rightPresent ->
-                this@BleRepositoryImpl.leftPresent = leftPresent
-                this@BleRepositoryImpl.rightPresent = rightPresent
-                var l = if (leftPresent) AlertLevel.Warning else AlertLevel.Safe
-                var r = if (rightPresent) AlertLevel.Warning else AlertLevel.Safe
-                if (swapLeftRight) { val t = l; l = r; r = t }
-                _alertState.value = Pair(l, r)
+            // 固件上报模块原始视角的左右 presence（0/1）。
+            // 这里按安装朝向转换到骑手视角后，仅作为 threat 兜底和告警摘要；
+            // 有 → Warning，无 → Safe。
+            onAlertChanged = { rawLeft, rawRight ->
+                val (l, r) = toRiderPresence(rawLeft, rawRight)
+                this@BleRepositoryImpl.leftPresent = l
+                this@BleRepositoryImpl.rightPresent = r
+                _alertState.value = Pair(
+                    if (l) AlertLevel.Warning else AlertLevel.Safe,
+                    if (r) AlertLevel.Warning else AlertLevel.Safe,
+                )
                 applyThreat()
             }
 
             onTargetDetails = { list ->
-                _targets.value = list
-                applyThreat()
-                updateTargetRecords(list)
+                rawTargets = list
+                remapTargetsToRider()
             }
 
             onDeviceStatusChanged = { status ->
@@ -322,13 +331,27 @@ class BleRepositoryImpl @Inject constructor(
      */
     private fun applyThreat() {
         val list = _targets.value
-        var left = sideThreat(list.filter { it.angleDeg < 0 })
-        var right = sideThreat(list.filter { it.angleDeg > 0 })
-        left = maxOf(left, if (leftPresent) THREAT_PRESENCE_FLOOR else 0f)
-        right = maxOf(right, if (rightPresent) THREAT_PRESENCE_FLOOR else 0f)
-        if (swapLeftRight) { val t = left; left = right; right = t }
-        _threatState.value = Pair(left, right)
+        val left = sideThreat(list.filter { it.angleDeg < 0 })
+        val right = sideThreat(list.filter { it.angleDeg > 0 })
+        _threatState.value = Pair(
+            maxOf(left, if (leftPresent) THREAT_PRESENCE_FLOOR else 0f),
+            maxOf(right, if (rightPresent) THREAT_PRESENCE_FLOOR else 0f),
+        )
     }
+
+    /** 原始目标 → 骑手视角目标；当安装朝向变化时可立即重新映射当前帧 */
+    private fun remapTargetsToRider() {
+        val rider = rawTargets.map { t ->
+            t.copy(angleDeg = Protocol.toRiderAngle(t.angleDeg, radarFacesRear))
+        }
+        _targets.value = rider
+        applyThreat()
+        updateTargetRecords(rider)
+    }
+
+    /** alert_status 原始 presence → 骑手视角 presence */
+    private fun toRiderPresence(rawLeft: Boolean, rawRight: Boolean): Pair<Boolean, Boolean> =
+        if (radarFacesRear) Pair(rawRight, rawLeft) else Pair(rawLeft, rawRight)
 
     private fun sideThreat(targets: List<TargetObject>): Float {
         val nearest = targets.minByOrNull { it.rangeM } ?: return 0f

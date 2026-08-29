@@ -52,6 +52,7 @@ fun OverlaySettingsScreen(
 ) {
     val config by viewModel.config.collectAsStateWithLifecycle()
     val overlayRunning by viewModel.overlayRunning.collectAsStateWithLifecycle()
+    val radarFacesRear by viewModel.radarFacesRear.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // 悬浮窗默认开启：开关为开时自动启动（偏好持久化，关掉后不再自动弹）
@@ -286,7 +287,7 @@ fun OverlaySettingsScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // ── Swap Left/Right ───────────────────────────────
+        // ── Orientation / Swap ─────────────────────────────
         Text("高级", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         HorizontalDivider()
 
@@ -295,7 +296,35 @@ fun OverlaySettingsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("左右反转", style = MaterialTheme.typography.bodyLarge)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("告警左右反转", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "默认开启：模块朝后安装时模块右侧=骑手左侧，需要反转。若模块朝前安装请关闭。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SafeGray,
+                )
+            }
+            Switch(
+                checked = radarFacesRear,
+                onCheckedChange = { viewModel.updateRadarFacesRear(it) },
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("悬浮窗左右反转", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "仅镜像灯带显示，不影响告警声音与通知方向",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SafeGray,
+                )
+            }
             Text(
                 text = if (config.swapLeftRight) "已反转" else "正常",
                 style = MaterialTheme.typography.bodySmall,

@@ -70,7 +70,6 @@ class OverlayService : Service() {
         scope.launch {
             overlayRepository.configFlow.collectLatest { config ->
                 overlayWindow.applyConfig(config)
-                syncSwap(config)
             }
         }
     }
@@ -116,7 +115,6 @@ class OverlayService : Service() {
     private suspend fun showWindow() {
         val config = overlayRepository.loadConfig()
         overlayWindow.show(config)
-        syncSwap(config)
         windowShown = true
     }
 
@@ -136,11 +134,6 @@ class OverlayService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setContentIntent(pi)
             .build()
-    }
-
-    private fun syncSwap(config: com.motobsd.model.OverlayConfig) {
-        (bleRepository as? com.motobsd.data.ble.BleRepositoryImpl)
-            ?.setSwapLeftRight(config.swapLeftRight)
     }
 
     companion object {

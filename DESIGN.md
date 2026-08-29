@@ -49,7 +49,8 @@ MotoBSD 是摩托车盲区检测（BSD）固件项目，运行于 nRF52840 + 60G
         │ BleRepositoryImpl（单例）              │
         │  - BLE 扫描 / 连接 / 重连状态机        │
         │  - alert / target / device / DIS 状态  │
-        │  - 左右反转（雷达安装方向适配）         │
+        │  - 安装朝向（告警左右反转）            │
+        │  - 悬浮窗灯带视觉左右反转              │
         │  - 数据经 BleConnectionManager (Nordic) │
         │    ←→ Protocol.parse 解析字节流        │
         └────────────────────────────────────────┘
@@ -98,7 +99,7 @@ BLE notify/read → Protocol 解析 → BleConnectionManager 回调
 
 | 特征值 | UUID 后缀 | 操作 | 字节 | 解析 |
 |--------|----------|------|------|------|
-| alert_status | 0001 | read + notify | 1B | hi_nibble=left, lo_nibble=right；0=无目标, 1=有目标（仅有无，不定级） |
+| alert_status | 0001 | read + notify | 1B | hi_nibble=模块左侧, lo_nibble=模块右侧；0=无目标, 1=有目标（模块原始视角，不定级） |
 | target_details | 0002 | notify | ≤33B | `[count, (range_m, angle_deg, velocity_ms, obj_id)*N]`（每目标 4B，最多 8 个） |
 | device_status | 0003 | read + notify | 5B | `[batt_mv_lo, batt_mv_hi, temp_lo, temp_hi, flags]` |
 | radar_power | 0005 | read + write | 1B | 0=off, 1=on |
@@ -131,8 +132,8 @@ BAS（0x180F）：
 
 **alert_status（1 字节）**
 
-`hi_nibble = left`，`lo_nibble = right`。固件只标记**有无目标**（0/1），不再给出告警等级；
-盲区范围 / 阈值 / 等级等策略已从固件移除，数据以 target_details 全量原样上报。
+`hi_nibble = 模块左侧`，`lo_nibble = 模块右侧`。固件只标记**有无目标**（0/1），
+且不感知安装方向；骑手视角转换由 App 的“告警左右反转”设置完成。
 
 App 端由 target_details 计算**左右威胁度（0~1）**驱动悬浮窗连续显示：
 威胁度 = 距离贡献（0m→1，30m→0）+ 接近速度加分（velocity 正=靠近，语义待真机确认）；
@@ -222,7 +223,9 @@ Disconnected ──connect(mac)──▶ Connecting ──onReady──▶ Ready
   - 手动「重连上次设备」：最多 3 次，失败提示"未找到设备：请确认设备已开机并在附近"
   - 连接/重连/扫描中，Dashboard 底部操作栏提供「取消/停止」，随时终止重试
 - 用户主动断开后不会自动重连
-- 左右反转（`swapLeftRight`）在仓库层对告警左右交换，适配雷达安装方向
+- 安装朝向（`radarFacesRear`，默认 true=朝后安装）在协议边界把模块原始角度转换为骑手视角；
+  告警、威胁度、雷达图统一使用转换后的骑手视角
+- 悬浮窗灯带左右反转（`swapLeftRight`）仅作用于 OverlayWindow 视觉层
 
 ## 8. 悬浮窗设计
 
@@ -240,7 +243,8 @@ Disconnected ──connect(mac)──▶ Connecting ──onReady──▶ Ready
 | 粗细 | 中 40dp | 细 28 / 中 40 / 粗 56dp |
 | 透明度 | 60% | 35%-100%（下限 35%，保证户外可见） |
 | 光带位置 | 左右边缘 | 左右边缘 / 上下边缘 |
-| 左右反转 | 关 | 开/关 |
+| 安装朝向 | 朝后 | 朝后/朝前（默认朝后，App 自动反转） |
+| 悬浮窗左右反转 | 关 | 开/关（仅视觉） |
 
 ### 8.3 弧形灯带
 
@@ -332,7 +336,8 @@ Disconnected ──connect(mac)──▶ Connecting ──onReady──▶ Ready
 透明度          Slider 35%-100%
 测试告警        左/右独立「切换」循环 安全→警告→警惕→危险，实时驱动浮窗与声音
 声音设置        音量 0-100、左频/右频 100-2000Hz、试听左/右/左急/右急
-高级            左右反转 [开关]
+高级            告警左右反转 [开关，默认开]
+                悬浮窗左右反转 [开关]
 [光带位置：左右边缘/上下边缘 切换]
 [悬浮窗指示：开/关]（默认开；关闭后需手动开启；无权限时提示先到系统设置授权）
 ```
@@ -405,7 +410,8 @@ Activity 声明 `configChanges`（orientation/screenSize/screenLayout/smallestSc
 | last_mac | 上次连接的 MAC |
 | onboarding_complete | 引导完成标记 |
 | overlay_size / overlay_alpha | 粗细 / 透明度 |
-| overlay_swap / overlay_orientation | 左右反转 / 光带方向 |
+| radar_faces_rear | 安装朝向（告警左右反转，默认 true） |
+| overlay_swap / overlay_orientation | 悬浮窗左右反转 / 光带方向 |
 | overlay_enabled | 悬浮窗开关偏好（默认开启） |
 | sound_volume / sound_left_freq / sound_right_freq | 声音设置 |
 

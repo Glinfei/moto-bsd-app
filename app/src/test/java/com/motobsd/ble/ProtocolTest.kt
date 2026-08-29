@@ -120,6 +120,17 @@ class ProtocolTest {
         assertEquals(1, list[0].rangeM)
     }
 
+    // ── 安装朝向镜像 ────────────────────────────────────
+
+    @Test
+    fun `rider angle mirrors raw angle when radar faces rear`() {
+        assertEquals(-10, Protocol.toRiderAngle(10, radarFacesRear = true))
+        assertEquals(10, Protocol.toRiderAngle(-10, radarFacesRear = true))
+        assertEquals(10, Protocol.toRiderAngle(10, radarFacesRear = false))
+        assertEquals(-10, Protocol.toRiderAngle(-10, radarFacesRear = false))
+        assertEquals(0, Protocol.toRiderAngle(0, radarFacesRear = true))
+    }
+
     // ── TargetObject.side ────────────────────────────────
 
     @Test

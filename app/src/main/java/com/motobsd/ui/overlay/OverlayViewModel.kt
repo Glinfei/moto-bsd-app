@@ -39,6 +39,10 @@ class OverlayViewModel @Inject constructor(
     /** 悬浮窗开关状态（初始化自持久化偏好，默认开启） */
     val overlayRunning: StateFlow<Boolean> = _overlayRunning.asStateFlow()
 
+    /** 模块是否朝后安装（默认 true）；false=朝前安装 */
+    private val _radarFacesRear = MutableStateFlow(true)
+    val radarFacesRear: StateFlow<Boolean> = _radarFacesRear.asStateFlow()
+
     init {
         viewModelScope.launch {
             _config.value = overlayRepository.loadConfig()
@@ -47,6 +51,7 @@ class OverlayViewModel @Inject constructor(
             _rightFreq.value = overlayRepository.loadRightFreq()
             _mediaStream.value = overlayRepository.loadSoundStream() == 0
             _overlayRunning.value = overlayRepository.loadOverlayEnabled()
+            _radarFacesRear.value = overlayRepository.loadRadarFacesRear()
             // 同步到 SoundManager
             soundManager.setVolume(_soundVolume.value)
             soundManager.setLeftFreq(_leftFreq.value)
@@ -58,6 +63,13 @@ class OverlayViewModel @Inject constructor(
     fun updateConfig(config: OverlayConfig) {
         _config.value = config
         overlayRepository.updateConfig(config)
+    }
+
+    fun updateRadarFacesRear(rear: Boolean) {
+        _radarFacesRear.value = rear
+        viewModelScope.launch {
+            overlayRepository.saveRadarFacesRear(rear)
+        }
     }
 
     fun toggleLightBarOrientation() {

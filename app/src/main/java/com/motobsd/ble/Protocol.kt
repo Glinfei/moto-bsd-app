@@ -50,8 +50,8 @@ object Protocol {
 
     /**
      * 解析 alert_status（1 字节）。
-     * hi_nibble = left 有无目标, lo_nibble = right 有无目标 (0/1)。
-     * 固件只标记"有目标"，不再给出告警等级；App 按有无直接驱动告警显示。
+     * hi_nibble = 模块左侧有无目标, lo_nibble = 模块右侧有无目标 (0/1)。
+     * 固件只标记"有目标"且不感知安装方向；App 按 [toRiderAngle] 转换后使用。
      */
     fun parseAlertStatus(data: ByteArray?): Pair<Boolean, Boolean> {
         if (data == null || data.isEmpty()) return Pair(false, false)
@@ -95,10 +95,20 @@ object Protocol {
     }
 
     /**
+     * 把模块原始角度转换为骑手视角角度。
+     *
+     * 模块朝后安装时（默认）模块右手方向 = 骑手左手方向，因此左右反转。
+     * 所有告警/威胁/雷达图应使用转换后的角度；仅模块原始视角展示才用 raw。
+     */
+    fun toRiderAngle(rawAngleDeg: Int, radarFacesRear: Boolean): Int =
+        if (radarFacesRear) -rawAngleDeg else rawAngleDeg
+
+    /**
      * 解析 target_details 通知（≤48 字节）。
      * 帧格式: [count: u8, (range_m: i8, angle_deg: i8, velocity_ms: i8, obj_id: u8) × N].
      * 每目标 4 字节，最多 8 个目标（固件零裁剪透传，任何角度/距离/速度都上报）。
-     * 角度负=左、正=右、0=正后方；速度正=靠近、负=远离。
+     * 角度为模块原始坐标：负=模块左侧、正=模块右侧、0=正后方；
+     * 速度正=靠近、负=远离。骑手视角转换用 [toRiderAngle]。
      */
     fun parseTargetDetails(data: ByteArray?): List<TargetObject> {
         if (data == null || data.size < 1) return emptyList()
