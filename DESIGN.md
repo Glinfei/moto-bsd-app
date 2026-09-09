@@ -89,7 +89,7 @@ BLE notify/read → Protocol 解析 → BleConnectionManager 回调
 | 持久化 | DataStore Preferences | 位置、配置、声音设置 |
 | 导航 | Navigation Compose | 底部三 Tab + 子页面 |
 | 折叠屏 | androidx.window 1.5.1 | 已引入，避让逻辑未实现 |
-| SDK | minSdk 26 / compile & target 36 | versionName 1.0.0 |
+| SDK | minSdk 26 / compile & target 36 | versionName 1.0.1 |
 
 ## 5. BLE 协议与数据映射
 

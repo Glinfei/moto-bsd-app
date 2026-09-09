@@ -24,8 +24,8 @@ android {
         applicationId = "com.motobsd"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
     }
 
     signingConfigs {
@@ -96,8 +96,8 @@ dependencies {
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.2.1")
 
-    // Nordic BLE (2.7.0 API is well-known and stable)
-    implementation("no.nordicsemi.android:ble:2.7.0")
+    // Nordic BLE（2.7.0 有断开重连回归嫌疑，issue #526；升到最新 2.10.0 做 A/B）
+    implementation("no.nordicsemi.android:ble:2.10.0")
 
     // Nordic DFU
     implementation("no.nordicsemi.android:dfu:2.7.0")

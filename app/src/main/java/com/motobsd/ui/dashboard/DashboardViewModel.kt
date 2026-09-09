@@ -1,6 +1,7 @@
 package com.motobsd.ui.dashboard
 
 import android.content.Context
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.motobsd.data.ble.BleRepository
@@ -109,8 +110,13 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 bleRepository.connect(mac)
-            } catch (_: Exception) {
-                // 无效 MAC 等异常：连接状态会回到 Disconnected，无需额外处理
+            } catch (_: SecurityException) {
+                Toast.makeText(context, "缺少蓝牙连接权限，请在系统设置中允许后重试", Toast.LENGTH_LONG).show()
+            } catch (_: IllegalArgumentException) {
+                Toast.makeText(context, "上次连接的设备地址无效，请重新扫描连接", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                // connect() 内的立即可抛失败会在仓库层复位到未连接；这里给出可见反馈
+                Toast.makeText(context, "重连失败：${e.message ?: "未知错误"}", Toast.LENGTH_LONG).show()
             }
         }
     }

@@ -10,6 +10,7 @@ import com.motobsd.model.BleConnectionState
 import com.motobsd.model.DeviceStatus
 import com.motobsd.model.TargetObject
 import com.motobsd.model.TargetRecord
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -146,9 +147,19 @@ class BleRepositoryImpl @Inject constructor(
         connectionManager?.close()
         connectionManager = cm
 
-        val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
-        val device = adapter.getRemoteDevice(mac)
-        cm.connectTo(device)
+        try {
+            val adapter =
+                (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+            val device = adapter.getRemoteDevice(mac)
+            cm.connectTo(device)
+        } catch (e: Exception) {
+            // MAC 非法 / 蓝牙不可用等立即可抛的失败：释放刚创建的管理器并回到未连接，
+            // 避免状态卡死在 Connecting（连接根本没发起，不会有回调来复位状态）
+            cm.close()
+            if (connectionManager === cm) connectionManager = null
+            _connectionState.value = BleConnectionState.Disconnected
+            throw e
+        }
 
         // 保存 MAC
         _lastMac.value = mac
@@ -281,7 +292,11 @@ class BleRepositoryImpl @Inject constructor(
         val current = _connectionState.value
         when (current) {
             // 用户主动断开 → 已在 Disconnected 状态，不处理
-            is BleConnectionState.Disconnected -> return
+            // Error（手动/自动重连已放弃）：迟到的断开回调来自旧连接的残留事件，
+            // 忽略，避免覆盖需要用户干预的明确失败状态
+            is BleConnectionState.Disconnected,
+            is BleConnectionState.Error,
+                -> return
 
             // 之前已连接或在连接中 → 意外断开，开始重连
             is BleConnectionState.Ready,
@@ -417,10 +432,18 @@ class BleRepositoryImpl @Inject constructor(
                 // 检查是否在 delay 期间被用户断开了
                 if (_connectionState.value is BleConnectionState.Disconnected) return@launch
 
-                val mac = _lastMac.value ?: break
+                val mac = _lastMac.value
+                if (mac == null) {
+                    // 没有可重连的设备：回到未连接，由 UI 引导用户去扫描
+                    _connectionState.value = BleConnectionState.Disconnected
+                    return@launch
+                }
 
-                // 尝试直连
-                try {
+                // 尝试直连。connectTo 是异步的，成败由 onReady/onServicesInvalidated 回调
+                // 与下方的超时判断决定，不会抛异常；这里只把"立即可抛异常"也归一为本轮失败，
+                // 保证每轮之后都走同一个"达到上限即报错"的出口（修复旧逻辑中 continue
+                // 永远跳过 maxAttempts 判断、导致无限重连的问题）。
+                val connected = try {
                     val adapter =
                         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
                     val device = adapter.getRemoteDevice(mac)
@@ -430,23 +453,25 @@ class BleRepositoryImpl @Inject constructor(
                     connectionManager = cm
                     cm.connectTo(device)
 
-                    // connectTo 是异步的，重连结果由 onReady/onServicesInvalidated 回调处理
-                    // 这里等待一段时间，如果没连上就继续下一轮重试
+                    // 等待 15s：onReady 触发后状态不再是 Reconnecting → 成功；
+                    // 仍停留在 Reconnecting → 本轮失败
                     delay(15_000L)
-
-                    // 如果 15 秒内 onReady 没触发（还在 Reconnecting），说明本次尝试失败
-                    if (_connectionState.value is BleConnectionState.Reconnecting) {
-                        continue
-                    } else {
-                        // onReady 触发了，连接成功
-                        return@launch
-                    }
+                    _connectionState.value !is BleConnectionState.Reconnecting
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
-                    // 连接异常，继续下一轮重试
+                    // 连接异常，视为本轮失败
+                    false
                 }
 
+                if (connected) return@launch // onReady 已触发，连接成功
+
+                // 本轮失败：达到上限则给出明确失败提示并停止，否则继续下一轮
                 if (attempt >= maxAttempts) {
                     manualConnect = false
+                    // 释放仍挂着连接请求的 GATT 客户端，避免迟到的断开回调把 Error 覆盖掉
+                    connectionManager?.close()
+                    connectionManager = null
                     val message = if (maxAttempts <= MANUAL_RECONNECT_ATTEMPTS) {
                         "未找到设备：请确认设备已开机并在附近"
                     } else {

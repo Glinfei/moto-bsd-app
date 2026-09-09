@@ -239,6 +239,17 @@ fun DashboardScreen(
             )
         }
 
+        // ── 连接失败的具体原因（如"未找到设备：请确认设备已开机并在附近"） ──
+        (uiState.connectionState as? BleConnectionState.Error)?.message?.let { msg ->
+            Text(
+                text = msg,
+                color = CriticalRed,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
         // ── 断线时的一键重连入口 ─────────────────────────
         if (lastMac != null &&
             (uiState.connectionState is BleConnectionState.Disconnected ||
