@@ -90,6 +90,10 @@ class SettingsRepository(
         dataStore.edit { it[Keys.OVERLAY_ENABLED] = enabled }
     }
 
+    /** 悬浮窗开关偏好的实时流（默认开启），供 Dashboard 自动启动悬浮窗 */
+    val overlayEnabled: Flow<Boolean> =
+        dataStore.data.map { it[Keys.OVERLAY_ENABLED] ?: true }
+
     // ── Radar installation orientation ──────────────────
 
     /** 模块是否朝后安装（默认 true；此时模块右侧=骑手左侧，需要左右反转） */

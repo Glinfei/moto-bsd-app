@@ -1,5 +1,6 @@
 package com.motobsd.data.ble
 
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanResult
 import android.content.Context
@@ -15,15 +16,20 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import no.nordicsemi.android.ble.observer.ConnectionObserver
 import kotlin.coroutines.resume
 import java.util.UUID
 import javax.inject.Inject
@@ -106,6 +112,12 @@ class BleRepositoryImpl @Inject constructor(
     // Coroutine scope for reconnection and device status observation
     private val scope = CoroutineScope(Dispatchers.Default)
 
+    /**
+     * 单次连接尝试的结果：true = onReady 已就绪，false = 连接失败。
+     * 重连循环等待它（上限 [RECONNECT_ATTEMPT_WAIT_MS]），收到信号即结束本轮，替代原先的"盲等 15 秒"。
+     */
+    private val connectionOutcome = Channel<Boolean>(Channel.CONFLATED)
+
     init {
         // Load saved MAC
         scope.launch {
@@ -138,20 +150,50 @@ class BleRepositoryImpl @Inject constructor(
     // ── 连接 ──────────────────────────────────────────────
 
     override suspend fun connect(mac: String) {
+        // 设备列表路径：用户刚从扫描结果里选中设备，协议栈记录是新的，直接连
+        dfuInProgress = false
+        manualConnect = true
+        reconnectJob?.cancel()
+        _connectionState.value = BleConnectionState.Connecting(mac)
+        connectResolved(mac, device = null)
+    }
+
+    override suspend fun reconnect(mac: String) {
+        // 手动「重连上次设备」：先短扫描预热协议栈里的设备记录（地址类型）。
+        // 未配对设备的该记录只存在蓝牙进程内存（不落盘），重启蓝牙/手机或记录被淘汰后即失效，
+        // 此时裸地址直连会因地址类型不符而超时——扫描一次即可重建。
         dfuInProgress = false
         manualConnect = true
         reconnectJob?.cancel()
         _connectionState.value = BleConnectionState.Connecting(mac)
 
+        // 先释放上一轮的管理器：扫描期间它的迟到回调不该触发自动重连循环
+        connectionManager?.close()
+        connectionManager = null
+
+        val scanned = findScannedDevice(mac, RECONNECT_SCAN_TIMEOUT_MS)
+
+        // 扫描期间用户点了「取消重连」：放弃本次连接
+        if (_connectionState.value is BleConnectionState.Disconnected) return
+
+        _connectionState.value = BleConnectionState.Connecting(mac)
+        connectResolved(mac, device = scanned)
+    }
+
+    /**
+     * 发起一次连接。
+     * @param device 扫描到的设备对象（自带正确地址类型）；null 时退回 `getRemoteDevice(mac)`
+     */
+    private suspend fun connectResolved(mac: String, device: BluetoothDevice?) {
         val cm = createAndSetupConnectionManager()
         connectionManager?.close()
         connectionManager = cm
 
         try {
-            val adapter =
-                (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
-            val device = adapter.getRemoteDevice(mac)
-            cm.connectTo(device)
+            val target = device
+                ?: (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager)
+                    .adapter.getRemoteDevice(mac)
+            cm.connectTo(target)
         } catch (e: Exception) {
             // MAC 非法 / 蓝牙不可用等立即可抛的失败：释放刚创建的管理器并回到未连接，
             // 避免状态卡死在 Connecting（连接根本没发起，不会有回调来复位状态）
@@ -164,6 +206,24 @@ class BleRepositoryImpl @Inject constructor(
         // 保存 MAC
         _lastMac.value = mac
         settings.setLastMac(mac)
+    }
+
+    /**
+     * 短扫描并按 MAC 找出目标设备的 [BluetoothDevice]（自带地址类型）。
+     * 命中即提前结束扫描；扫描不可用（权限缺失/蓝牙关闭）或未命中返回 null，由调用方退回裸地址直连。
+     */
+    private suspend fun findScannedDevice(mac: String, timeoutMs: Long): BluetoothDevice? = try {
+        withTimeoutOrNull(timeoutMs) {
+            scanner.scan(timeoutMs = timeoutMs)
+                .mapNotNull { results ->
+                    results.firstOrNull { it.device.address.equals(mac, ignoreCase = true) }?.device
+                }
+                .firstOrNull()
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     override fun disconnect() {
@@ -236,16 +296,37 @@ class BleRepositoryImpl @Inject constructor(
     // ── ConnectionManager 创建 ────────────────────────────
 
     private fun createAndSetupConnectionManager(): BleConnectionManager {
-        return BleConnectionManager(context).apply {
+        val cm = BleConnectionManager(context)
+
+        // 连接尝试"从未建立连接就失败"时，库不会回调 onServicesInvalidated，只会通知 ConnectionObserver。
+        // 缺这条信号会让状态永远停在 Connecting（用户只能手动取消）——这里接住它。
+        // 回调内校验 manager 身份：上一轮被 close() 的实例可能有迟到回调，不能误伤新一轮尝试。
+        cm.setConnectionObserver(object : ConnectionObserver {
+            override fun onDeviceConnecting(device: BluetoothDevice) = Unit
+            override fun onDeviceConnected(device: BluetoothDevice) = Unit
+            override fun onDeviceReady(device: BluetoothDevice) = Unit
+            override fun onDeviceDisconnecting(device: BluetoothDevice) = Unit
+            override fun onDeviceDisconnected(device: BluetoothDevice, reason: Int) = Unit
+
+            override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) {
+                if (connectionManager === cm) handleConnectionFailed(reason)
+            }
+        })
+
+        return cm.apply {
             onReady = {
-                manualConnect = false
-                _connectionState.value = BleConnectionState.Ready
-                startRssiPolling()
+                // 身份校验：旧实例的迟到就绪/断开回调不能影响新一轮连接
+                if (connectionManager === cm) {
+                    manualConnect = false
+                    _connectionState.value = BleConnectionState.Ready
+                    connectionOutcome.trySend(true)
+                    startRssiPolling()
+                }
             }
 
             onServicesInvalidated = {
                 // Nordic BleManager reports services invalidated after gatt.disconnect()
-                handleGattDisconnect()
+                if (connectionManager === cm) handleGattDisconnect()
             }
 
             // 固件上报模块原始视角的左右 presence（0/1）。
@@ -336,6 +417,26 @@ class BleRepositoryImpl @Inject constructor(
                 _targetRecords.value = emptyList()
                 _connectionState.value = BleConnectionState.Disconnected
             }
+        }
+    }
+
+    /**
+     * 连接尝试失败（尚未建立连接）：库不会回调 onServicesInvalidated，必须在这里接住，
+     * 否则状态会永远停在 Connecting（旧实现的"偶发失效、只能手动取消"）。
+     * 与 [handleGattDisconnect] 的分工：这里是"从没连上"，那里是"连上后断开"。
+     */
+    private fun handleConnectionFailed(reason: Int) {
+        when (_connectionState.value) {
+            // 用户发起（设备列表点击 / 重连按钮）：按手动上限进入重连循环，失败后给出明确报错
+            is BleConnectionState.Connecting -> startReconnect(
+                maxAttempts = if (manualConnect) MANUAL_RECONNECT_ATTEMPTS
+                else AUTO_RECONNECT_ATTEMPTS
+            )
+
+            // 循环正在等本轮结果：立即让它进入下一轮，不必盲等到超时
+            is BleConnectionState.Reconnecting -> connectionOutcome.trySend(false)
+
+            else -> Unit
         }
     }
 
@@ -439,10 +540,12 @@ class BleRepositoryImpl @Inject constructor(
                     return@launch
                 }
 
-                // 尝试直连。connectTo 是异步的，成败由 onReady/onServicesInvalidated 回调
-                // 与下方的超时判断决定，不会抛异常；这里只把"立即可抛异常"也归一为本轮失败，
-                // 保证每轮之后都走同一个"达到上限即报错"的出口（修复旧逻辑中 continue
-                // 永远跳过 maxAttempts 判断、导致无限重连的问题）。
+                // 清掉上一轮残留的结果信号，避免旧结果误判本轮
+                while (connectionOutcome.tryReceive().isSuccess) { /* drain */ }
+
+                // 尝试直连。connectTo 是异步的：结果由 onReady（true）或
+                // onDeviceFailedToConnect（false）经 [connectionOutcome] 送达，
+                // 上限 [RECONNECT_ATTEMPT_WAIT_MS] 兜底；所有失败路径统一走下方"达到上限即报错"出口。
                 val connected = try {
                     val adapter =
                         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
@@ -453,10 +556,7 @@ class BleRepositoryImpl @Inject constructor(
                     connectionManager = cm
                     cm.connectTo(device)
 
-                    // 等待 15s：onReady 触发后状态不再是 Reconnecting → 成功；
-                    // 仍停留在 Reconnecting → 本轮失败
-                    delay(15_000L)
-                    _connectionState.value !is BleConnectionState.Reconnecting
+                    withTimeoutOrNull(RECONNECT_ATTEMPT_WAIT_MS) { connectionOutcome.receive() } == true
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -515,5 +615,9 @@ class BleRepositoryImpl @Inject constructor(
         private const val MANUAL_RECONNECT_ATTEMPTS = 3
         /** 骑行中意外断线的自动重连次数：可能只是暂时超出范围，给足机会 */
         private const val AUTO_RECONNECT_ATTEMPTS = 10
+        /** 单轮重连尝试的等待上限；收到就绪/失败信号会提前结束本轮 */
+        private const val RECONNECT_ATTEMPT_WAIT_MS = 15_000L
+        /** 手动重连前的短扫描时长：命中即提前结束，用于刷新协议栈里的设备记录（地址类型） */
+        private const val RECONNECT_SCAN_TIMEOUT_MS = 5_000L
     }
 }

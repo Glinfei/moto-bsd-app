@@ -26,6 +26,12 @@ interface BleRepository {
     /** 连接指定 MAC 地址的设备。 */
     suspend fun connect(mac: String)
 
+    /**
+     * 手动重连上次设备：先按 MAC 做一次短扫描，刷新协议栈里的设备记录（地址类型），
+     * 命中即用扫描到的设备对象连接；未命中或扫描不可用再退回裸地址直连。
+     */
+    suspend fun reconnect(mac: String)
+
     /** 用户主动断开连接。进入 [BleConnectionState.Disconnected]，不会自动重连。 */
     fun disconnect()
 

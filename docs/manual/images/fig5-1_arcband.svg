@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+  <defs>
+    <linearGradient id="gradBand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFC107"/>
+      <stop offset="0.55" stop-color="#FF9800"/>
+      <stop offset="1" stop-color="#F44336"/>
+    </linearGradient>
+    <linearGradient id="gradStrip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFC107"/>
+      <stop offset="0.5" stop-color="#FF9800"/>
+      <stop offset="1" stop-color="#F44336"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="960" height="620" fill="#ffffff"/>
+
+  <!-- Phone frame (navigation app in background) -->
+  <rect x="60" y="30" width="330" height="560" rx="34" fill="#22303c"/>
+  <rect x="70" y="40" width="310" height="540" rx="26" fill="#dfe9ef"/>
+  <!-- map hint: grid -->
+  <g stroke="#ffffff" stroke-opacity="0.9" stroke-width="10">
+    <line x1="120" y1="60" x2="120" y2="560"/>
+    <line x1="200" y1="60" x2="200" y2="560"/>
+    <line x1="280" y1="60" x2="280" y2="560"/>
+    <line x1="90" y1="140" x2="360" y2="140"/>
+    <line x1="90" y1="260" x2="360" y2="260"/>
+    <line x1="90" y1="380" x2="360" y2="380"/>
+    <line x1="90" y1="500" x2="360" y2="500"/>
+  </g>
+  <!-- route -->
+  <path d="M 160 560 C 200 460, 240 300, 160 180 S 260 60, 300 50" fill="none" stroke="#42A5F5" stroke-width="9" stroke-linecap="round" stroke-dasharray="1 16"/>
+  <!-- status chip -->
+  <rect x="150" y="52" width="150" height="30" rx="15" fill="#1E88E5"/>
+  <text x="225" y="72" font-size="14" fill="#ffffff" text-anchor="middle">高德地图 · 全屏导航</text>
+
+  <!-- Left band: warning level (yellow-orange) -->
+  <path d="M 86 110 C 138 200, 138 440, 86 520" fill="none" stroke="#FFC107" stroke-width="24" stroke-linecap="round" opacity="0.9"/>
+  <!-- Right band: critical (red) -->
+  <path d="M 374 90 C 316 190, 316 450, 374 540" fill="none" stroke="#F44336" stroke-width="30" stroke-linecap="round" opacity="0.95"/>
+  <!-- left side caption -->
+  <text x="105" y="80"  font-size="13" fill="#22303c" font-weight="bold">左侧＝左盲区</text>
+  <text x="380" y="80"  font-size="13" fill="#22303c" font-weight="bold">右侧＝右盲区</text>
+
+  <!-- Legend: how to read the arc -->
+  <g>
+    <text x="480" y="70" font-size="19" font-weight="bold" fill="#17497B">怎么读灯带</text>
+    <text x="480" y="95" font-size="13" fill="#666666">叠加在导航之上，不遮挡操作；余光即可感知</text>
+
+    <g font-size="14" fill="#333333">
+      <!-- color -->
+      <rect x="480" y="120" width="34" height="10" rx="5" fill="url(#gradStrip)"/>
+      <text x="528" y="129">威胁越大颜色越“热”：黄 → 橙 → 红（连续过渡）</text>
+      <!-- brightness -->
+      <rect x="480" y="152" width="34" height="10" rx="5" fill="#F44336" opacity="0.45"/>
+      <text x="528" y="161">越危险越亮（还要乘上你设置的透明度）</text>
+      <!-- arc length -->
+      <path d="M 480 190 L 514 184 A 26 26 0 0 0 514 210 Z" fill="none"/>
+      <path d="M 484 182 A 14 14 0 0 0 484 214" fill="none" stroke="#FF9800" stroke-width="6" stroke-linecap="round"/>
+      <text x="528" y="201">弧长：从中间一小段向两端伸展，越危险越接近整条边</text>
+    </g>
+
+    <!-- mini examples -->
+    <g>
+      <text x="480" y="250" font-size="15" font-weight="bold" fill="#333333">常见状态速查</text>
+
+      <text x="495" y="285" font-size="13" fill="#333333">安全（无目标）</text>
+      <rect x="640" y="275" width="180" height="2" fill="#dddddd"/>
+      <text x="830" y="285" font-size="13" fill="#999999">全透明，不显示</text>
+
+      <text x="495" y="320" font-size="13" fill="#333333">警告 / 警惕</text>
+      <rect x="640" y="308" width="130" height="14" rx="7" fill="#FFC107"/>
+      <rect x="760" y="308" width="60" height="14" rx="7" fill="#FF9800"/>
+      <text x="830" y="320" font-size="13" fill="#999999">黄 / 橙</text>
+
+      <text x="495" y="355" font-size="13" fill="#333333">危险（快速接近）</text>
+      <rect x="640" y="343" width="190" height="14" rx="7" fill="#F44336"/>
+      <text x="830" y="355" font-size="13" fill="#999999">红</text>
+
+      <text x="495" y="390" font-size="13" fill="#333333">断开连接</text>
+      <rect x="640" y="376" width="150" height="14" rx="7" fill="#9E9E9E" opacity="0.4"/>
+      <rect x="640" y="376" width="150" height="14" rx="7" fill="#9E9E9E" opacity="0.25"/>
+      <text x="830" y="390" font-size="13" fill="#999999">灰色呼吸</text>
+    </g>
+
+    <g font-size="13" fill="#555555">
+      <text x="480" y="440">两条灯带左右独立：各自侧有车才亮</text>
+      <text x="480" y="465">到达“危险”时同一侧还会响警报 + 震动 + 通知</text>
+      <text x="480" y="490">无目标（安全）时灯带完全透明，不打扰你看导航</text>
+      <text x="480" y="515">可设置粗细、透明度、贴左右还是上下边缘（第 6 章）</text>
+    </g>
+  </g>
+
+  <text x="225" y="615" font-size="12" fill="#999999" text-anchor="middle">示意：左右灯带（黄=警告级 / 红=危险级）叠加在导航地图上，贴近屏幕边缘</text>
+</svg>

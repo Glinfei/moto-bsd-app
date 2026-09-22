@@ -49,6 +49,18 @@ class BleConnectionManager(context: Context) : BleManager(context) {
     private val _deviceStatus = MutableStateFlow(DeviceStatus())
     val deviceStatus: StateFlow<DeviceStatus> = _deviceStatus.asStateFlow()
 
+    /**
+     * 本连接 BAS 2A19 已报的电量百分比；null = 尚未收到。
+     * 只要非 null，device_status 就只能更新电压/温度/flags，不得覆盖百分比。
+     */
+    private var basPercent: Int? = null
+
+    /** 上一次电量采样值（可能来自连接初读的缓存值），用于稳定性判定 */
+    private var lastPercentSample: Int? = null
+
+    /** 是否已连续两次读到相近的电量；false 时 UI 显示 "—" 占位 */
+    private var percentStable: Boolean = false
+
     // ── 回调（由 BleRepositoryImpl 设置） ──────────────────
 
     /** GATT 连接就绪（服务发现 + 通知订阅完成） */
@@ -213,9 +225,7 @@ class BleConnectionManager(context: Context) : BleManager(context) {
                 deviceStatusChar?.let { c ->
                     readCharacteristic(c).with(
                         no.nordicsemi.android.ble.callback.DataReceivedCallback { _, data ->
-                            val status = Protocol.parseDeviceStatus(data.value)
-                            _deviceStatus.value = status
-                            onDeviceStatusChanged?.invoke(status)
+                            publishDeviceStatus(data)
                         }
                     ).enqueue()
                 }
@@ -252,17 +262,50 @@ class BleConnectionManager(context: Context) : BleManager(context) {
     }
 
     private fun onDeviceStatusData(device: BluetoothDevice, data: Data) {
-        val status = Protocol.parseDeviceStatus(data.value)
+        publishDeviceStatus(data)
+    }
+
+    /**
+     * device_status 只提供电压/温度/flags；若本连接已收到 BAS，则保留 BAS 的百分比，
+     * 避免固件每 5s 的推送把 BAS 值覆盖成线性换算式（DESIGN §5.2：BAS 优先）。
+     * 稳定前的读数只记录不展示（batteryValid=false），UI 显示 "—" 占位。
+     */
+    private fun publishDeviceStatus(data: Data) {
+        val parsed = Protocol.parseDeviceStatus(data.value)
+        val status = if (batteryLevelChar != null) {
+            // 设备有 BAS：百分比只认 BAS（device_status 帧不含百分比）
+            Protocol.mergeBatteryPercent(parsed, basPercent)
+                .copy(batteryValid = basPercent != null && percentStable)
+        } else {
+            // 无 BAS：只能用电压线性换算兜底，同样要过稳定性门槛
+            parsed.copy(batteryValid = acceptPercentSample(parsed.batteryPercent))
+        }
         _deviceStatus.value = status
         onDeviceStatusChanged?.invoke(status)
     }
 
-    /** BAS 2A19 电量百分比：BAS 优先于 device_status 的线性换算，同步到仓库 */
+    /** BAS 2A19 电量百分比：本连接的权威值（device_status 帧不含百分比） */
     private fun updateBatteryFromBas(data: Data) {
         val pct = data.value?.get(0)?.toInt()?.and(0xFF) ?: return
-        val updated = _deviceStatus.value.copy(batteryPercent = pct)
+        basPercent = pct
+        val valid = acceptPercentSample(pct)
+        val updated = _deviceStatus.value.copy(batteryPercent = pct, batteryValid = valid)
         _deviceStatus.value = updated
         onDeviceStatusChanged?.invoke(updated)
+    }
+
+    /**
+     * 记录一次电量采样并返回读数是否已稳定。
+     * 连接建立时读到的可能是固件缓存值，单次采样不算数：连续两次相差
+     * ≤ [Protocol.BATTERY_PERCENT_STABLE_TOLERANCE] 才置为稳定。
+     * 一旦稳定即保持，避免后续正常漂移让电量在 "—" 和数字间闪烁。
+     */
+    private fun acceptPercentSample(pct: Int): Boolean {
+        if (Protocol.isBatteryPercentStable(lastPercentSample, pct)) {
+            percentStable = true
+        }
+        lastPercentSample = pct
+        return percentStable
     }
 
     // ── DIS ───────────────────────────────────────────────
@@ -288,6 +331,9 @@ class BleConnectionManager(context: Context) : BleManager(context) {
         systemResetChar = null
         deviceNameChar = null
         batteryLevelChar = null
+        basPercent = null
+        lastPercentSample = null
+        percentStable = false
         disChars.clear()
     }
 }

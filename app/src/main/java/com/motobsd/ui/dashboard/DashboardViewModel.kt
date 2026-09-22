@@ -72,6 +72,10 @@ class DashboardViewModel @Inject constructor(
     /** 目标事件记录（以 obj_id 为单位） */
     val targetRecords: StateFlow<List<TargetRecord>> = bleRepository.targetRecords
 
+    /** 悬浮窗指示开关（持久化，默认开启）：连接就绪后自动启动，无需先点"开始骑行" */
+    val overlayEnabled: StateFlow<Boolean> = settings.overlayEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     /** 最近一次收到雷达/BLE 数据的时间戳（用于显示"数据新鲜度"，防止静默失效） */
     private val _lastDataAt = MutableStateFlow(0L)
     val lastDataAt: StateFlow<Long> = _lastDataAt.asStateFlow()
@@ -109,7 +113,7 @@ class DashboardViewModel @Inject constructor(
         val mac = bleRepository.lastMac.value ?: return
         viewModelScope.launch {
             try {
-                bleRepository.connect(mac)
+                bleRepository.reconnect(mac)
             } catch (_: SecurityException) {
                 Toast.makeText(context, "缺少蓝牙连接权限，请在系统设置中允许后重试", Toast.LENGTH_LONG).show()
             } catch (_: IllegalArgumentException) {

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+  <defs>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1E88E5"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#FF9800"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="960" height="540" fill="#ffffff"/>
+
+  <!-- 标题 -->
+  <text x="300" y="36" font-size="17" font-weight="bold" fill="#17497B" text-anchor="middle">俯视图：MotoBSD 模块朝后安装（默认）时，模块的“右”＝骑手的“左”</text>
+
+  <!-- 摩托车俯视简图：车头朝上 -->
+  <g>
+    <!-- 后轮 -->
+    <rect x="238" y="330" width="124" height="18" rx="9" fill="#37474F"/>
+    <!-- 前轮 -->
+    <rect x="238" y="120" width="124" height="18" rx="9" fill="#37474F"/>
+    <!-- 车身 -->
+    <rect x="278" y="130" width="44" height="240" rx="16" fill="#546E7A"/>
+    <!-- 油箱宽一点 -->
+    <rect x="268" y="160" width="64" height="70" rx="12" fill="#607D8B"/>
+    <!-- 座垫 -->
+    <rect x="272" y="250" width="56" height="60" rx="10" fill="#455A64"/>
+    <!-- 方向箭头 车头朝上 -->
+    <line x1="300" y1="95"  x2="300" y2="45"  stroke="#1E88E5" stroke-width="3" marker-end="url(#arrowBlue)"/>
+    <text x="300" y="36" font-size="13" fill="#1E88E5" text-anchor="middle">行驶方向（车头）</text>
+    <!-- 骑手左右 -->
+    <text x="210" y="215" font-size="13" fill="#1E88E5" font-weight="bold" text-anchor="middle">骑手左侧</text>
+    <line x1="262" y1="215" x2="235" y2="215" stroke="#1E88E5" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+    <text x="390" y="215" font-size="13" fill="#1E88E5" font-weight="bold" text-anchor="middle">骑手右侧</text>
+    <line x1="338" y1="215" x2="365" y2="215" stroke="#1E88E5" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+
+    <!-- 模块：装在车尾，雷达朝后（画面下方） -->
+    <rect x="262" y="380" width="76" height="34" rx="8" fill="#1E88E5"/>
+    <text x="300" y="402" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">模块</text>
+    <text x="300" y="432" font-size="12" fill="#666666" text-anchor="middle">雷达朝后探测盲区</text>
+
+    <!-- 雷达波束扇形（向后） -->
+    <path d="M 300 414 L 192 500 A 160 160 0 0 0 408 500 Z" fill="#FF9800" fill-opacity="0.16" stroke="#FF9800" stroke-opacity="0.5" stroke-width="1.2"/>
+    <text x="300" y="492" font-size="11" fill="#E65100" text-anchor="middle">后方探测区（盲区）</text>
+  </g>
+
+  <!-- 分隔 -->
+  <line x1="470" y1="60" x2="470" y2="520" stroke="#dddddd" stroke-width="1.5"/>
+
+  <!-- 右侧说明 -->
+  <g>
+    <text x="500" y="80" font-size="16" font-weight="bold" fill="#17497B">为什么默认要“反转”？</text>
+    <text x="500" y="112" font-size="13.5" fill="#333333">模块朝后安装时，模块自身的“右侧”朝向</text>
+    <text x="500" y="132" font-size="13.5" fill="#333333">骑手的左后方，模块的“左侧”朝向骑手的右后方。</text>
+    <text x="500" y="152" font-size="13.5" fill="#333333">如果 App 不处理，盲区提示会左右相反。</text>
+
+    <rect x="500" y="178" width="400" height="110" rx="12" fill="#EAF3FB" stroke="#1E88E5" stroke-width="1.2"/>
+    <text x="518" y="204" font-size="14" font-weight="bold" fill="#17497B">App 的解决办法</text>
+    <text x="518" y="228" font-size="13.5" fill="#333333">灯带设置页 → 高级 →「告警左右反转」</text>
+    <text x="518" y="250" font-size="13.5" fill="#333333">默认开启 ✓：模块朝后安装，左右已自动换回骑手视角</text>
+    <text x="518" y="272" font-size="13.5" fill="#333333">若模块朝前安装（朝车头方向），请关闭它</text>
+
+    <text x="500" y="320" font-size="16" font-weight="bold" fill="#17497B">如何确认装对了？</text>
+    <text x="500" y="350" font-size="13.5" fill="#333333">① 车后方有车出现在左侧时，应亮左灯带/报左侧；</text>
+    <text x="500" y="372" font-size="13.5" fill="#333333">② 拿不准时，可在「图标」页用「测试告警」先分别</text>
+    <text x="500" y="394" font-size="13.5" fill="#333333">　　点亮左右两侧，看灯带出现在哪边。</text>
+
+    <rect x="500" y="420" width="400" height="86" rx="12" fill="#FFF4E0" stroke="#FF9800" stroke-width="1.2"/>
+    <text x="518" y="446" font-size="13.5" fill="#8a4b00" font-weight="bold">提示</text>
+    <text x="518" y="468" font-size="13" fill="#8a4b00">安装朝向属于硬件安装的一部分，如不确定模块</text>
+    <text x="518" y="488" font-size="13" fill="#8a4b00">朝向，请查看随产品附带的安装说明书或咨询售后。</text>
+  </g>
+</svg>

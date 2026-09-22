@@ -83,6 +83,7 @@ fun DashboardScreen(
     val lastDataAt by viewModel.lastDataAt.collectAsStateWithLifecycle()
     val rssi by viewModel.rssi.collectAsStateWithLifecycle()
     val targetRecords by viewModel.targetRecords.collectAsStateWithLifecycle()
+    val overlayEnabled by viewModel.overlayEnabled.collectAsStateWithLifecycle()
     var showDetails by rememberSaveable { mutableStateOf(false) }
     var now by remember { mutableStateOf(0L) }
     val context = LocalContext.current
@@ -95,10 +96,15 @@ fun DashboardScreen(
         }
     }
 
-    // 连接就绪时自动启动后台服务（通知 + 声音）
-    LaunchedEffect(uiState.connectionState) {
+    // 连接就绪时自动启动后台服务（通知 + 声音 + 悬浮灯带）
+    LaunchedEffect(uiState.connectionState, overlayEnabled) {
         if (uiState.connectionState is BleConnectionState.Ready) {
             com.motobsd.service.BleService.start(context)
+            // 悬浮窗指示默认开启：连接就绪即创建浮窗，避免首次进入只能看到雷达、
+            // 必须点「开始骑行」才出现灯带。用户手动关闭后 overlayEnabled=false，不再自动启动。
+            if (overlayEnabled) {
+                com.motobsd.service.OverlayService.start(context)
+            }
         }
     }
 

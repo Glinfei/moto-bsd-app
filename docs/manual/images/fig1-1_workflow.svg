@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="250" viewBox="0 0 940 250" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1E88E5"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="940" height="250" fill="#ffffff"/>
+
+  <!-- Step boxes -->
+  <g>
+    <g>
+      <rect x="10"  y="58" width="158" height="132" rx="14" fill="#EAF3FB" stroke="#1E88E5" stroke-width="1.5"/>
+      <circle cx="30" cy="78" r="11" fill="#1E88E5"/>
+      <text x="30" y="83" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+      <text x="89" y="100" font-size="14" font-weight="bold" fill="#17497B" text-anchor="middle">模块上电</text>
+      <text x="89" y="124" font-size="12" fill="#333333" text-anchor="middle">车尾的 MotoBSD 模块</text>
+      <text x="89" y="142" font-size="12" fill="#333333" text-anchor="middle">通电后开始</text>
+      <text x="89" y="160" font-size="12" fill="#333333" text-anchor="middle">广播蓝牙信号</text>
+    </g>
+    <g>
+      <rect x="198" y="58" width="158" height="132" rx="14" fill="#EAF3FB" stroke="#1E88E5" stroke-width="1.5"/>
+      <circle cx="218" cy="78" r="11" fill="#1E88E5"/>
+      <text x="218" y="83" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">2</text>
+      <text x="277" y="100" font-size="14" font-weight="bold" fill="#17497B" text-anchor="middle">打开 App 连接</text>
+      <text x="277" y="124" font-size="12" fill="#333333" text-anchor="middle">首次需扫描选择设备</text>
+      <text x="277" y="142" font-size="12" fill="#333333" text-anchor="middle">之后骑行会自动重连</text>
+      <text x="277" y="160" font-size="12" fill="#333333" text-anchor="middle">右上角显示「已连接」</text>
+    </g>
+    <g>
+      <rect x="386" y="58" width="158" height="132" rx="14" fill="#EAF3FB" stroke="#1E88E5" stroke-width="1.5"/>
+      <circle cx="406" cy="78" r="11" fill="#1E88E5"/>
+      <text x="406" y="83" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">3</text>
+      <text x="465" y="100" font-size="14" font-weight="bold" fill="#17497B" text-anchor="middle">导航 + 开始骑行</text>
+      <text x="465" y="124" font-size="12" fill="#333333" text-anchor="middle">打开高德等全屏导航</text>
+      <text x="465" y="142" font-size="12" fill="#333333" text-anchor="middle">点「开始骑行」</text>
+      <text x="465" y="160" font-size="12" fill="#333333" text-anchor="middle">屏幕保持常亮不锁屏</text>
+    </g>
+    <g>
+      <rect x="574" y="58" width="158" height="132" rx="14" fill="#FFF4E0" stroke="#FF9800" stroke-width="1.5"/>
+      <circle cx="594" cy="78" r="11" fill="#FF9800"/>
+      <text x="594" y="83" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">4</text>
+      <text x="653" y="100" font-size="14" font-weight="bold" fill="#8a4b00" text-anchor="middle">骑行中看灯带</text>
+      <text x="653" y="124" font-size="12" fill="#333333" text-anchor="middle">屏幕左右边缘弧形灯带</text>
+      <text x="653" y="142" font-size="12" fill="#333333" text-anchor="middle">余光感知盲区来车</text>
+      <text x="653" y="160" font-size="12" fill="#333333" text-anchor="middle">无需切换 App</text>
+    </g>
+    <g>
+      <rect x="762" y="58" width="158" height="132" rx="14" fill="#EAF3FB" stroke="#1E88E5" stroke-width="1.5"/>
+      <circle cx="782" cy="78" r="11" fill="#1E88E5"/>
+      <text x="782" y="83" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">5</text>
+      <text x="841" y="100" font-size="14" font-weight="bold" fill="#17497B" text-anchor="middle">到达目的地</text>
+      <text x="841" y="124" font-size="12" fill="#333333" text-anchor="middle">退出骑行 / 断开连接</text>
+      <text x="841" y="142" font-size="12" fill="#333333" text-anchor="middle">下次用车打开 App</text>
+      <text x="841" y="160" font-size="12" fill="#333333" text-anchor="middle">点一下即可重连</text>
+    </g>
+  </g>
+
+  <!-- Arrows -->
+  <g stroke="#1E88E5" stroke-width="2" marker-end="url(#arrow)">
+    <line x1="168" y1="124" x2="194" y2="124"/>
+    <line x1="356" y1="124" x2="382" y2="124"/>
+    <line x1="544" y1="124" x2="570" y2="124"/>
+    <line x1="732" y1="124" x2="758" y2="124"/>
+  </g>
+
+  <text x="470" y="30" font-size="15" fill="#555555" text-anchor="middle">MotoBSD 一次骑行的完整流程</text>
+  <text x="470" y="228" font-size="12" fill="#888888" text-anchor="middle">说明：模块需先完成装车并固定好安装朝向（见第 6 章「告警左右反转」），再按以上流程使用。</text>
+</svg>

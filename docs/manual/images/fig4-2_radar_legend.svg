@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="500" viewBox="0 0 680 500" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+  <rect x="0" y="0" width="680" height="500" fill="#ffffff"/>
+
+  <!-- Sector fan (apex top center, opens downward ±75°) -->
+  <g>
+    <!-- sector fill -->
+    <path d="M 340 40 L 50.2 117.7 A 300 300 0 0 0 629.8 117.7 Z" fill="#2196F3" fill-opacity="0.07"/>
+    <!-- ring arcs r=100/200/300 -->
+    <path d="M 243.4 65.9 A 100 100 0 0 0 436.6 65.9" fill="none" stroke="#999999" stroke-opacity="0.45" stroke-width="1"/>
+    <path d="M 146.8 91.8 A 200 200 0 0 0 533.2 91.8" fill="none" stroke="#999999" stroke-opacity="0.45" stroke-width="1"/>
+    <path d="M 50.2 117.7 A 300 300 0 0 0 629.8 117.7" fill="none" stroke="#999999" stroke-opacity="0.45" stroke-width="1"/>
+    <!-- boundary lines -->
+    <line x1="340" y1="40" x2="50.2" y2="117.7" stroke="#999999" stroke-opacity="0.45" stroke-width="1"/>
+    <line x1="340" y1="40" x2="629.8" y2="117.7" stroke="#999999" stroke-opacity="0.45" stroke-width="1"/>
+    <!-- faint center axis -->
+    <line x1="340" y1="40" x2="340" y2="350" stroke="#999999" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 5"/>
+  </g>
+
+  <!-- Direction labels -->
+  <text x="340" y="22" font-size="13" fill="#bbbbbb" text-anchor="middle">前方（不探测，仅定位）</text>
+  <text x="340" y="400" font-size="13" fill="#666666" text-anchor="middle">后方</text>
+  <text x="26"  y="132" font-size="13" fill="#666666" text-anchor="end">左</text>
+  <text x="654" y="132" font-size="13" fill="#666666" text-anchor="start">右</text>
+
+  <!-- device marker (module / 车尾) -->
+  <circle cx="340" cy="40" r="6.5" fill="#37474F"/>
+  <circle cx="340" cy="40" r="2.6" fill="#ffffff"/>
+
+  <!-- sample targets -->
+  <!-- red: near & approaching -->
+  <circle cx="255.7" cy="110.7" r="10" fill="#F44336" stroke="#000000" stroke-opacity="0.3" stroke-width="1.2"/>
+  <text x="255.7" y="148" font-size="12" fill="#F44336" text-anchor="middle" font-weight="bold">2.5m · 8m/s 靠近</text>
+  <!-- orange: <=10m approaching -->
+  <circle cx="281.9" cy="199.8" r="8" fill="#FF9800" stroke="#000000" stroke-opacity="0.3" stroke-width="1.2"/>
+  <!-- yellow: approaching far -->
+  <circle cx="445" cy="221.9" r="7" fill="#FFC107" stroke="#000000" stroke-opacity="0.3" stroke-width="1.2"/>
+  <!-- gray: moving away / static -->
+  <circle cx="544.8" cy="183.4" r="6" fill="#9E9E9E" stroke="#000000" stroke-opacity="0.3" stroke-width="1.2"/>
+
+  <text x="340" y="430" font-size="13" fill="#888888" text-anchor="middle">范围自动：默认 15m，按最远目标扩到 50m（左下角显示「范围 Xm」）</text>
+
+  <!-- legend -->
+  <g font-size="13" fill="#333333">
+    <circle cx="120" cy="462" r="6" fill="#F44336"/>
+    <text x="132" y="466">正在靠近且 ≤5m</text>
+    <circle cx="282" cy="462" r="6" fill="#FF9800"/>
+    <text x="294" y="466">正在靠近且 ≤10m</text>
+    <circle cx="428" cy="462" r="6" fill="#FFC107"/>
+    <text x="440" y="466">正在靠近</text>
+    <circle cx="540" cy="462" r="6" fill="#9E9E9E"/>
+    <text x="552" y="466">远离或静止</text>
+  </g>
+  <text x="340" y="490" font-size="12" fill="#999999" text-anchor="middle">圆点越大表示越近 / 靠近越快；目标越近、越快，颜色越红（与悬浮灯带同一套颜色语义）</text>
+</svg>

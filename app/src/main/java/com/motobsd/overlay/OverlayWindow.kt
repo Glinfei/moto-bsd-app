@@ -32,6 +32,9 @@ class OverlayWindow(
     private var barScreenH: Int = 0
     private var config: OverlayConfig = OverlayConfig()
     private var keepScreenOn: Boolean = false
+    /** 最近一次收到的原始（未镜像）左右威胁度，配置变化时按新配置重新映射 */
+    private var lastThreatLeft: Float = 0f
+    private var lastThreatRight: Float = 0f
 
     // ── public API ────────────────────────────────────────
 
@@ -50,10 +53,8 @@ class OverlayWindow(
             addView(leftView)
             addView(rightView)
             isAttached = true
-            leftView.applyConfig(config)
-            rightView.applyConfig(config)
-            applyKeepScreenOn()
-            updatePositions()
+            // 应用配置并把登记时回放的威胁度按换边规则重绘，再定位/常亮
+            applyConfig(this.config)
         } catch (_: Exception) {
             // 无悬浮窗权限等异常：不崩溃，等待权限授予后重新启动 Service
             isAttached = false
@@ -69,18 +70,19 @@ class OverlayWindow(
 
     /** 威胁度 0~1 直通灯带视图；[OverlayConfig.swapLeftRight] 仅镜像灯带显示 */
     fun setThreat(side: BsdIndicatorView.Side, threat: Float) {
-        val target = if (config.swapLeftRight) {
-            when (side) {
-                BsdIndicatorView.Side.Left -> BsdIndicatorView.Side.Right
-                BsdIndicatorView.Side.Right -> BsdIndicatorView.Side.Left
-            }
-        } else {
-            side
+        when (side) {
+            BsdIndicatorView.Side.Left -> lastThreatLeft = threat
+            BsdIndicatorView.Side.Right -> lastThreatRight = threat
         }
-        when (target) {
-            BsdIndicatorView.Side.Left -> leftView.setThreat(threat)
-            BsdIndicatorView.Side.Right -> rightView.setThreat(threat)
-        }
+        dispatchThreats()
+    }
+
+    /** 按当前配置把两侧威胁度映射到左右视图 */
+    private fun dispatchThreats() {
+        val left = if (config.swapLeftRight) lastThreatRight else lastThreatLeft
+        val right = if (config.swapLeftRight) lastThreatLeft else lastThreatRight
+        leftView.setThreat(left)
+        rightView.setThreat(right)
     }
 
     /** 断线时灯带灰色呼吸，与"安全"区分 */
@@ -93,6 +95,8 @@ class OverlayWindow(
         this.config = config
         leftView.applyConfig(config)
         rightView.applyConfig(config)
+        // 换边/尺寸/透明度变化后立即用当前威胁度重绘，无需等下一帧 BLE 数据
+        dispatchThreats()
         applyKeepScreenOn()
         updatePositions()
     }

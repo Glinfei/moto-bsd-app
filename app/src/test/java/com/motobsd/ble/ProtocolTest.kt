@@ -68,6 +68,51 @@ class ProtocolTest {
         assertEquals(0, status.batteryPercent)
     }
 
+    // ── BAS 电量优先级 ───────────────────────────────────
+
+    @Test
+    fun `bas percent wins over device status linear fallback`() {
+        // batt = 0x0DF2 = 3570mV：线性换算 37%，固件 LiPo 曲线约 9%
+        val parsed = Protocol.parseDeviceStatus(
+            byteArrayOf(0xF2.toByte(), 0x0D, 0xFF.toByte(), 0x00, 0x00)
+        )
+        assertEquals(37, parsed.batteryPercent)
+        assertEquals(9, Protocol.mergeBatteryPercent(parsed, 9).batteryPercent)
+    }
+
+    @Test
+    fun `linear fallback kept while no bas value received`() {
+        val parsed = Protocol.parseDeviceStatus(
+            byteArrayOf(0xF2.toByte(), 0x0D, 0xFF.toByte(), 0x00, 0x00)
+        )
+        assertEquals(37, Protocol.mergeBatteryPercent(parsed, null).batteryPercent)
+    }
+
+    @Test
+    fun `merging bas keeps voltage temperature and flags`() {
+        // batt = 3976mV, temp = 25.5°C, flags = USB + radar
+        val parsed = Protocol.parseDeviceStatus(
+            byteArrayOf(0x88.toByte(), 0x0F, 0xFF.toByte(), 0x00, 0x11)
+        )
+        val merged = Protocol.mergeBatteryPercent(parsed, 42)
+        assertEquals(42, merged.batteryPercent)
+        assertEquals(3976, merged.batteryVoltage)
+        assertEquals(25.5f, merged.temperature, 0.001f)
+        assertTrue(merged.usbConnected)
+        assertTrue(merged.radarOnline)
+    }
+
+    @Test
+    fun `battery percent is unstable until two close samples`() {
+        // 连接初读的缓存值单独一次不算数，UI 应显示 "—"
+        assertFalse(Protocol.isBatteryPercentStable(null, 6))
+        // 缓存 6% 与实时 9% 接近 → 读数稳定
+        assertTrue(Protocol.isBatteryPercentStable(6, 9))
+        // 6% 跳到 37% 视为不稳定（本次 bug 的现象）
+        assertFalse(Protocol.isBatteryPercentStable(6, 37))
+        assertTrue(Protocol.isBatteryPercentStable(37, 37))
+    }
+
     // ── target_details ───────────────────────────────────
 
     @Test

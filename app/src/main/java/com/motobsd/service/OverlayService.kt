@@ -50,7 +50,8 @@ class OverlayService : Service() {
         ))
 
         overlayWindow = OverlayWindow(this, overlayRepository)
-        OverlayWindowHolder.window = overlayWindow
+        // 登记窗口并把缓存状态回放给新窗口（窗口可能在 BLE 数据到位之后才创建）
+        OverlayWindowHolder.attach(overlayWindow)
 
         // 恢复上次的骑行模式（进程被杀后 START_STICKY 重启场景）
         scope.launch {
@@ -58,10 +59,13 @@ class OverlayService : Service() {
             if (!rideModeIntentHandled) overlayWindow.setKeepScreenOn(rideMode)
         }
 
-        // 同步当前连接状态（断线时立即显示灰色呼吸，而非普通"安全"）
+        // 用仓库当前值校准：连接状态决定断线呼吸，威胁度决定灯带亮度/弧长。
+        // 否则窗口创建前已存在的目标不会点亮灯带，必须等下一次数值变化。
         OverlayWindowHolder.updateConnectionState(
             bleRepository.connectionState.value is com.motobsd.model.BleConnectionState.Ready
         )
+        val (leftThreat, rightThreat) = bleRepository.threatState.value
+        OverlayWindowHolder.updateThreat(leftThreat, rightThreat)
 
         // 加载初始配置并显示
         if (canShowOverlay()) scope.launch { showWindow() }
@@ -104,7 +108,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         isRunning = false
-        OverlayWindowHolder.window = null
+        OverlayWindowHolder.detach(overlayWindow)
         overlayWindow.hide()
         windowShown = false
         scope.cancel()

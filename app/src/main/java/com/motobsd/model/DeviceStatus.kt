@@ -11,6 +11,12 @@ data class DeviceStatus(
     val batteryRaw: Int = 0,
     /** percentage (0-100), 由 BleManager 根据电压曲线计算 */
     val batteryPercent: Int = 0,
+    /**
+     * 电量读数是否已稳定可信（fresh + stable）。
+     * 连接建立时读到的可能是固件缓存的旧值（固件每 5s 才刷新一次），
+     * false 时 UI 显示 "—" 占位，等连续两次相近读数再显示。
+     */
+    val batteryValid: Boolean = false,
     /** 摄氏度 (raw: centi-degC) */
     val temperature: Float = 0f,
     /** bit[0]=USB connected */

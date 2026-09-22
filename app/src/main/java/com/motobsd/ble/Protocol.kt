@@ -79,7 +79,8 @@ object Protocol {
 
         val tempCelsius = tempDecideg / 10f
 
-        // Battery percentage via standard BAS 0x2A19 (set externally by BleManager).
+        // device_status 帧不含百分比：这里算出的只是"设备无 BAS 时"的线性兜底。
+        // 一旦本连接收到 BAS 2A19，百分比由 BAS 独占 —— 见 [mergeBatteryPercent]。
         // Fallback: linear interpolation 3200-4200mV → 0-100%.
         val pct = if (battMv > 100) {
             ((battMv - 3200).coerceAtLeast(0) * 100 / (4200 - 3200)).coerceAtMost(100)
@@ -93,6 +94,32 @@ object Protocol {
             radarOnline = (flags and 0x10) != 0,
         )
     }
+
+    /**
+     * 合并 device_status 与 BAS 2A19 的电量百分比。
+     *
+     * device_status 帧本身不含百分比，[parseDeviceStatus] 的线性换算只是"设备无 BAS 时"
+     * 的兜底。只要本连接已收到 BAS 值，百分比就由 BAS 独占（DESIGN §5.2），device_status
+     * 仅更新电压/温度/flags —— 否则固件每 5s 一次的 device_status 推送会用线性值覆盖
+     * BAS，且在 LiPo 平台区（3.5~3.8V）把电量高估数倍。
+     *
+     * @param status 解析出的 device_status
+     * @param basPercent 本连接已收到的 BAS 值；null = 尚无 BAS，保留线性兜底
+     */
+    fun mergeBatteryPercent(status: DeviceStatus, basPercent: Int?): DeviceStatus =
+        if (basPercent == null) status else status.copy(batteryPercent = basPercent)
+
+    /** 连续两次电量采样相差超过此值（百分点）即视为读数不稳定 */
+    const val BATTERY_PERCENT_STABLE_TOLERANCE = 3
+
+    /**
+     * 电量读数是否稳定：与前一次采样相差不超过 [BATTERY_PERCENT_STABLE_TOLERANCE] 个百分点。
+     *
+     * 固件在连接建立时可能先返回缓存值（开机 / 上次连接写入，连接后 5s 才刷新），
+     * 只有连续两次相近的读数才认为可信，避免把缓存值当实时电量显示。
+     */
+    fun isBatteryPercentStable(previous: Int?, current: Int): Boolean =
+        previous != null && kotlin.math.abs(current - previous) <= BATTERY_PERCENT_STABLE_TOLERANCE
 
     /**
      * 把模块原始角度转换为骑手视角角度。

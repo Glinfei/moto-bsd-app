@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+  <rect x="0" y="0" width="1080" height="1920" fill="#ffffff"/>
+
+  <!-- ===== Header ===== -->
+  <rect x="0" y="0" width="1080" height="252" fill="#1E88E5"/>
+  <circle cx="980" cy="40"  r="150" fill="#ffffff" opacity="0.06"/>
+  <circle cx="80"  cy="240" r="120" fill="#ffffff" opacity="0.08"/>
+  <text x="540" y="112" font-size="68" font-weight="bold" fill="#ffffff" text-anchor="middle">MotoBSD 快速上手</text>
+  <text x="540" y="176" font-size="31" fill="#DDEAFB" text-anchor="middle">摩托车盲区检测 · 手机 App 一分钟入门</text>
+
+  <!-- ===== Section 1 ===== -->
+  <text x="90" y="320" font-size="44" font-weight="bold" fill="#17497B">首次使用 · 只需 3 步</text>
+
+  <!-- Step 1 card -->
+  <rect x="90" y="356" width="900" height="236" rx="24" fill="#F5F9FD" stroke="#D0E3F5" stroke-width="2"/>
+  <circle cx="156" cy="474" r="46" fill="#1E88E5"/>
+  <text x="156" y="494" font-size="52" font-weight="bold" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="240" y="440" font-size="39" font-weight="bold" fill="#17497B">下载安装 App</text>
+  <text x="240" y="492" font-size="28" fill="#444444">扫描右侧二维码，下载并安装</text>
+  <text x="240" y="540" font-size="28" fill="#444444">系统要求：Android 8.0 及以上</text>
+  <image href="fig2-1_download_qrcode.png" x="793" y="399" width="148" height="148" preserveAspectRatio="xMidYMid meet"/>
+  <text x="867" y="580" font-size="22" fill="#7892A9" text-anchor="middle">扫码下载 App</text>
+
+  <!-- Step 2 card -->
+  <rect x="90" y="610" width="900" height="236" rx="24" fill="#F5F9FD" stroke="#D0E3F5" stroke-width="2"/>
+  <circle cx="156" cy="728" r="46" fill="#1E88E5"/>
+  <text x="156" y="748" font-size="52" font-weight="bold" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="240" y="694" font-size="39" font-weight="bold" fill="#17497B">连接模块</text>
+  <text x="240" y="744" font-size="28" fill="#444444">打开手机蓝牙 → 点 App 底部「扫描设备」</text>
+  <text x="240" y="788" font-size="28" fill="#444444">点名称带 MotoBSD 标签的设备 → 顶部显示「已连接」</text>
+
+  <!-- Step 3 card -->
+  <rect x="90" y="864" width="900" height="236" rx="24" fill="#F5F9FD" stroke="#D0E3F5" stroke-width="2"/>
+  <circle cx="156" cy="982" r="46" fill="#1E88E5"/>
+  <text x="156" y="1002" font-size="52" font-weight="bold" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="240" y="948" font-size="39" font-weight="bold" fill="#17497B">开始骑行</text>
+  <text x="240" y="998" font-size="28" fill="#444444">打开高德/百度等导航全屏 → 切回 MotoBSD</text>
+  <text x="240" y="1042" font-size="28" fill="#444444">点底部「开始骑行」→ 屏幕常亮，两侧出现盲区灯带</text>
+
+  <text x="90" y="1164" font-size="33" fill="#666666">之后每次用车：打开 App（自动重连）→ 开始骑行。就这么简单。</text>
+
+  <!-- ===== Section 2 ===== -->
+  <text x="90" y="1280" font-size="44" font-weight="bold" fill="#17497B">骑行中 · 灯带颜色速查</text>
+  <text x="90" y="1330" font-size="30" fill="#666666">左侧灯带 = 左盲区　·　右侧灯带 = 右盲区　·　颜色越红越危险</text>
+
+  <!-- legend rows -->
+  <g>
+    <!-- 安全 -->
+    <rect x="90" y="1362" width="900" height="96" rx="18" fill="#F7F7F7"/>
+    <text x="225" y="1420" font-size="24" fill="#B0B0B0" text-anchor="middle">无灯带</text>
+    <text x="356" y="1414" font-size="33" font-weight="bold" fill="#333333">安全（无目标）</text>
+    <text x="356" y="1448" font-size="26" fill="#888888">灯带不点亮、完全透明 —— 该侧盲区没有车</text>
+
+    <!-- 警告 -->
+    <rect x="90" y="1474" width="900" height="96" rx="18" fill="#FFF9E6"/>
+    <path d="M 150 1518 C 206 1492 250 1518 288 1512" fill="none" stroke="#FFC107" stroke-width="12" stroke-linecap="round"/>
+    <text x="356" y="1526" font-size="33" font-weight="bold" fill="#333333">警告 · 黄</text>
+    <text x="356" y="1560" font-size="26" fill="#888888">该侧探测到目标，开始留意</text>
+
+    <!-- 警惕 -->
+    <rect x="90" y="1586" width="900" height="96" rx="18" fill="#FFF3E0"/>
+    <path d="M 150 1630 C 222 1596 282 1630 340 1618" fill="none" stroke="#FF9800" stroke-width="16" stroke-linecap="round"/>
+    <text x="356" y="1638" font-size="33" font-weight="bold" fill="#333333">警惕 · 橙</text>
+    <text x="356" y="1672" font-size="26" fill="#888888">目标更近 / 靠近更快（灯带更亮更长）</text>
+
+    <!-- 危险 -->
+    <rect x="90" y="1698" width="900" height="96" rx="18" fill="#FFEBEE"/>
+    <path d="M 150 1742 C 240 1700 330 1742 410 1726" fill="none" stroke="#F44336" stroke-width="20" stroke-linecap="round"/>
+    <text x="356" y="1750" font-size="33" font-weight="bold" fill="#333333">危险 · 红</text>
+    <text x="356" y="1784" font-size="26" fill="#888888">目标很近且快速接近 —— 立即观察！</text>
+
+    <!-- 断线 -->
+    <rect x="90" y="1810" width="900" height="96" rx="18" fill="#F7F7F7"/>
+    <path d="M 150 1854 C 240 1812 330 1854 410 1838" fill="none" stroke="#9E9E9E" stroke-width="14" stroke-linecap="round" opacity="0.45"/>
+    <text x="356" y="1862" font-size="33" font-weight="bold" fill="#333333">断开连接</text>
+    <text x="356" y="1896" font-size="26" fill="#888888">整条灰色缓慢呼吸 —— App 正在自动重连</text>
+  </g>
+</svg>
